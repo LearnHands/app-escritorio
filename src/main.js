@@ -9,17 +9,30 @@ import MenuView   from './views/MenuView.vue'
 import DrawingView from './views/DrawingView.vue'
 import PianoView  from './views/PianoView.vue'
 import PuzzleView from './views/PuzzleView.vue'
+import LoginView  from './views/LoginView.vue'
 
 // Router — usamos Hash history para compatibilidad con Electron
 const router = createRouter({
   history: createWebHashHistory(),
   routes: [
-    { path: '/',        name: 'home',    component: HomeView },
-    { path: '/menu',    name: 'menu',    component: MenuView },
-    { path: '/drawing', name: 'drawing', component: DrawingView },
-    { path: '/piano',   name: 'piano',   component: PianoView },
-    { path: '/puzzle',  name: 'puzzle',  component: PuzzleView },
+    { path: '/',        name: 'login',   component: LoginView },
+    { path: '/home',    name: 'home',    component: HomeView, meta: { requiresAuth: true } },
+    { path: '/menu',    name: 'menu',    component: MenuView, meta: { requiresAuth: true } },
+    { path: '/drawing', name: 'drawing', component: DrawingView, meta: { requiresAuth: true } },
+    { path: '/piano',   name: 'piano',   component: PianoView, meta: { requiresAuth: true } },
+    { path: '/puzzle',  name: 'puzzle',  component: PuzzleView, meta: { requiresAuth: true } },
   ],
+})
+
+router.beforeEach((to, from, next) => {
+  const session = localStorage.getItem('edumotion_session')
+  if (to.meta.requiresAuth && !session) {
+    next('/')
+  } else if (to.path === '/' && session) {
+    next('/home')
+  } else {
+    next()
+  }
 })
 
 const app = createApp(App)

@@ -5,6 +5,7 @@
          CAPA 1 (z-0): Video de cámara — fondo completo
          ═══════════════════════════════════════════════ -->
     <video
+      v-show="!isLogin"
       ref="bgVideoRef"
       id="bg-camera-video"
       class="bg-video"
@@ -21,7 +22,7 @@
     <!-- ═══════════════════════════════════════════════
          CAPA 3 (z-20): Canvas de landmarks de la mano
          ═══════════════════════════════════════════════ -->
-    <canvas ref="landmarksBg" class="landmarks-bg-canvas" />
+    <canvas v-show="!isLogin" ref="landmarksBg" class="landmarks-bg-canvas" />
 
     <!-- ═══════════════════════════════════════════════
          CAPA 4 (z-30): UI — vistas del router
@@ -37,7 +38,7 @@
     <!-- ═══════════════════════════════════════════════
          CAPA 5 (z-40): Mini preview cámara + controles
          ═══════════════════════════════════════════════ -->
-    <CameraFeed :bg-video-ref="bgVideoRef" @stream-ready="onStreamReady" />
+    <CameraFeed v-if="!isLogin" :bg-video-ref="bgVideoRef" @stream-ready="onStreamReady" />
 
     <!-- ═══════════════════════════════════════════════
          CAPA 5.5 (z-45): UI Global (Puntos/Logros)
@@ -57,21 +58,32 @@
       </Transition>
     </div>
 
+    <!-- Botón flotante de Cerrar Sesión (solo visible fuera de login usando ratón) -->
+    <button v-if="!isLogin" @click="handleLogout" class="fixed bottom-4 right-4 z-50 glass px-4 py-2 rounded-xl text-white/50 hover:text-white hover:bg-red-500/20 text-xs transition-colors pointer-events-auto">
+      Cerrar Sesión
+    </button>
+
     <!-- ═══════════════════════════════════════════════
          CAPA 6 (z-50): Cursor virtual de mano
          ═══════════════════════════════════════════════ -->
-    <HandCursor />
+    <HandCursor v-if="!isLogin" />
 
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import HandCursor from '@/components/HandCursor.vue'
 import CameraFeed from '@/components/CameraFeed.vue'
 import { landmarks, isDetecting } from '@/composables/useMediaPipe.js'
 import { stream } from '@/composables/useCamera.js'
 import { useScore } from '@/composables/useScore.js'
+import { logout } from '@/services/db.js'
+
+const route = useRoute()
+const router = useRouter()
+const isLogin = computed(() => route.path === '/')
 
 const bgVideoRef    = ref(null)
 const landmarksBg   = ref(null)
@@ -185,6 +197,11 @@ onMounted(() => {
   window.addEventListener('resize', resizeCanvas)
   drawBgLandmarks()
 })
+
+function handleLogout() {
+  logout()
+  router.push('/')
+}
 </script>
 
 <style scoped>
@@ -217,9 +234,9 @@ onMounted(() => {
   z-index: 10;
   background: linear-gradient(
     135deg,
-    rgba(10, 10, 26, 0.72) 0%,
-    rgba(15, 15, 53, 0.68) 50%,
-    rgba(10, 10, 26, 0.75) 100%
+    rgba(10, 10, 26, 0.4) 0%,
+    rgba(15, 15, 53, 0.3) 50%,
+    rgba(10, 10, 26, 0.5) 100%
   );
   /* Efecto viñeta en los bordes */
   box-shadow: inset 0 0 120px rgba(0, 0, 0, 0.5);
