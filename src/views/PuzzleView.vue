@@ -308,7 +308,7 @@ function goBack() { router.push('/menu') }
 
 .pieces-container {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(75px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
   gap: 16px;
   overflow-y: auto;
   padding: 8px;
@@ -337,8 +337,8 @@ function goBack() { router.push('/menu') }
   filter: grayscale(1);
 }
 
-.piece-emoji { font-size: 2rem; }
-.piece-label { font-size: 0.7rem; font-weight: 700; color: white; }
+.piece-emoji { font-size: 2.2rem; }
+.piece-label { font-size: 0.8rem; font-weight: 700; color: white; }
 
 .dragged-piece {
   position: fixed;

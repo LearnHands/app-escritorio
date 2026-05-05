@@ -1,7 +1,7 @@
 const { app, BrowserWindow, session } = require('electron')
 const path = require('path')
 
-const isDev = process.env.NODE_ENV !== 'production'
+const isDev = !app.isPackaged
 
 function createWindow() {
   const win = new BrowserWindow({

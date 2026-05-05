@@ -42,8 +42,7 @@
       "node_modules/@mediapipe/**/*"
     ],
     "win": {
-      "target": "nsis",
-      "icon": "public/icon.ico"
+      "target": "nsis"
     },
     "nsis": {
       "oneClick": false,
