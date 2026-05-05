@@ -17,26 +17,26 @@ export function initDB() {
 }
 
 export function login(username, password) {
-  const usersStr = localStorage.getItem(DB_KEY)
+  const usersStr = localStorage.getItem(DB_KEY) // Lista de usuarios persiste en localStorage
   if (!usersStr) return null
   
   const users = JSON.parse(usersStr)
   const user = users.find(u => u.username === username && u.password === password)
   
   if (user) {
-    // Ocultar password en sesión local
+    // La SESIÓN se guarda en sessionStorage para que se pierda al cerrar la ventana/app
     const { password: _, ...userInfo } = user
-    localStorage.setItem('edumotion_session', JSON.stringify(userInfo))
+    sessionStorage.setItem('edumotion_session', JSON.stringify(userInfo))
     return userInfo
   }
   return null
 }
 
 export function logout() {
-  localStorage.removeItem('edumotion_session')
+  sessionStorage.removeItem('edumotion_session')
 }
 
 export function getCurrentUser() {
-  const sessionStr = localStorage.getItem('edumotion_session')
+  const sessionStr = sessionStorage.getItem('edumotion_session')
   return sessionStr ? JSON.parse(sessionStr) : null
 }

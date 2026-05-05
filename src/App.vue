@@ -276,7 +276,7 @@ function handleLogout() {
 /* Widget Global de Puntos */
 .global-score-widget {
   position: fixed;
-  top: 24px;
+  bottom: 80px; /* Movido abajo para evitar solapamiento con botones de Inicio/Menú */
   right: 24px;
   padding: 8px 16px 8px 12px;
   border-radius: 100px;

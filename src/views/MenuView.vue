@@ -48,6 +48,13 @@
               <span class="stat-value font-display text-amber-400">{{ score }}</span>
             </div>
           </div>
+          
+          <!-- Botón de reinicio de progreso -->
+          <div class="w-full mt-4 pointer-events-auto">
+            <button @click="confirmReset" class="text-[10px] text-white/30 hover:text-red-400 transition-colors flex items-center gap-1 mx-auto">
+              <span>🔄</span> Reiniciar progreso del alumno
+            </button>
+          </div>
         </div>
         <div class="card-deco">⭐</div>
       </div>
@@ -119,7 +126,13 @@ import { useScore } from '@/composables/useScore.js'
 const router = useRouter()
 const hoveredModule = ref(null)
 
-const { score, level } = useScore()
+const { score, level, resetScore } = useScore()
+
+function confirmReset() {
+  if (confirm('¿Estás seguro de que quieres reiniciar todos los puntos y trofeos del alumno?')) {
+    resetScore()
+  }
+}
 
 const modules = [
   {
