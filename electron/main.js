@@ -36,18 +36,19 @@ function createWindow() {
     return true
   })
 
+  if (isDev) {
     win.loadURL('http://localhost:5173')
     // win.webContents.openDevTools({ mode: 'detach' })
   } else {
     win.loadFile(path.join(__dirname, '../dist/index.html'))
   }
 
-  // Maximizar para experiencia educativa inmersiva
-  win.maximize()
+// Maximizar para experiencia educativa inmersiva
+win.maximize()
 
-  win.on('closed', () => {
-    app.quit()
-  })
+win.on('closed', () => {
+  app.quit()
+})
 }
 
 app.whenReady().then(() => {
