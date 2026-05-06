@@ -25,7 +25,7 @@ const router = createRouter({
 })
 
 router.beforeEach((to, from, next) => {
-  const session = localStorage.getItem('edumotion_session')
+  const session = sessionStorage.getItem('edumotion_session')
   if (to.meta.requiresAuth && !session) {
     next('/')
   } else if (to.path === '/' && session) {

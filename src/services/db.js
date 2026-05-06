@@ -34,6 +34,7 @@ export function login(username, password) {
 
 export function logout() {
   sessionStorage.removeItem('edumotion_session')
+  localStorage.removeItem('edumotion_session') // Limpieza de seguridad por versiones previas
 }
 
 export function getCurrentUser() {

@@ -25,6 +25,13 @@
         >
           🏠 Inicio
         </HandButton>
+        <!-- Botón de Cerrar Sesión exclusivo para profesores/admin -->
+        <button 
+          @click="handleLogout" 
+          class="glass px-4 py-2 rounded-xl text-white/40 hover:text-white hover:bg-red-500/20 text-[10px] uppercase font-bold tracking-widest transition-all pointer-events-auto border border-white/5 shadow-xl ml-2"
+        >
+          Cerrar Sesión
+        </button>
       </div>
     </header>
 
@@ -122,11 +129,17 @@ import { useRouter } from 'vue-router'
 import HandButton from '@/components/HandButton.vue'
 import { isDetecting } from '@/composables/useMediaPipe.js'
 import { useScore } from '@/composables/useScore.js'
+import { logout } from '@/services/db.js'
 
 const router = useRouter()
 const hoveredModule = ref(null)
 
 const { score, level, resetScore } = useScore()
+
+function handleLogout() {
+  logout()
+  router.push('/')
+}
 
 function confirmReset() {
   if (confirm('¿Estás seguro de que quieres reiniciar todos los puntos y trofeos del alumno?')) {

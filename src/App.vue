@@ -58,11 +58,6 @@
       </Transition>
     </div>
 
-    <!-- Botón flotante de Cerrar Sesión (solo visible fuera de login usando ratón) -->
-    <button v-if="!isLogin" @click="handleLogout" class="fixed bottom-4 right-4 z-50 glass px-4 py-2 rounded-xl text-white/50 hover:text-white hover:bg-red-500/20 text-xs transition-colors pointer-events-auto">
-      Cerrar Sesión
-    </button>
-
     <!-- ═══════════════════════════════════════════════
          CAPA 6 (z-50): Cursor virtual de mano
          ═══════════════════════════════════════════════ -->
