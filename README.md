@@ -27,7 +27,17 @@ La aplicación cuenta con una pantalla de acceso protegida para que los profesor
 
 *Nota: La sesión expira automáticamente al cerrar la aplicación para garantizar la seguridad en equipos compartidos.*
 
-## ⚙️ Instalación y Desarrollo
+## 🚀 Descarga Directa (Versión Beta)
+
+Si deseas probar la aplicación sin realizar la instalación de desarrollo, puedes descargar la versión beta precompilada para Windows:
+
+1.  **Descargar desde Google Drive:** [Enlace de Descarga Beta](https://drive.google.com/drive/folders/1PWRW1HKfjc5-y0pY89uucKQQTns8jPLd?usp=drive_link)
+2.  **Descomprimir:** Extrae el contenido del archivo `.zip` en una carpeta de tu PC.
+3.  **Ejecutar:** Busca el archivo `EduMotion.exe` (o similar dentro de la carpeta `dist_electron`) y ejecútalo directamente.
+
+---
+
+## ⚙️ Instalación para Desarrolladores
 
 ### Requisitos
 - Node.js (v18 o superior)
