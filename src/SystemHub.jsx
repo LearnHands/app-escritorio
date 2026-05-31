@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  Palette, Music, Puzzle, Play, ArrowLeft, Trash2, Trophy, LogOut, BookOpen, Circle, Square, Globe, Gamepad2, Compass, Shield, Award
+  Palette, Music, Puzzle, Play, ArrowLeft, Trash2, Trophy, LogOut, BookOpen, Circle, Square, Globe, Gamepad2, Compass, Shield, Award, Lock
 } from 'lucide-react';
 
 // Hooks
@@ -23,11 +23,15 @@ import HandButton from './components/hub/HandButton';
 import puceLogo from './assets/puce.png';
 
 const SCORE_KEY = 'learnhands_score';
+// Time (ms) the menu cards stay locked after entering the menu
+const MENU_LOCK_MS = 2000;
 
 const SystemHub = ({ onExit }) => {
   const [view, setView] = useState('HOME'); // HOME, MENU, GAME
   const [currentGame, setCurrentGame] = useState(null);
   const [score, setScore] = useState(() => parseInt(localStorage.getItem(SCORE_KEY) || '0', 10));
+  const [menuLocked, setMenuLocked] = useState(false);
+  const menuLockTimerRef = useRef(null);
 
   const videoRef = useRef(null);
   const { isLoaded, initMediaPipe, error } = useMediaPipe();
@@ -44,6 +48,13 @@ const SystemHub = ({ onExit }) => {
       localStorage.setItem(SCORE_KEY, newScore.toString());
       return newScore;
     });
+  };
+
+  const goToMenu = () => {
+    setView('MENU');
+    setMenuLocked(true);
+    clearTimeout(menuLockTimerRef.current);
+    menuLockTimerRef.current = setTimeout(() => setMenuLocked(false), MENU_LOCK_MS);
   };
 
   return (
@@ -66,7 +77,7 @@ const SystemHub = ({ onExit }) => {
               </div>
 
               <div className="flex flex-col items-center gap-6 w-full">
-                <HandButton onClick={() => setView('MENU')} className="px-20 py-10 text-2xl w-full max-w-md h-32 animate-pulse" dwellMs={800}>
+                <HandButton onClick={goToMenu} className="px-20 py-10 text-2xl w-full max-w-md h-32 animate-pulse" dwellMs={800}>
                   <Play fill="white" size={32} /> COMENZAR
                 </HandButton>
                 <div className="flex gap-4">
@@ -86,19 +97,32 @@ const SystemHub = ({ onExit }) => {
               <img src={puceLogo} alt="PUCE Logo" className="h-16 w-auto drop-shadow-2xl" />
             </div>
 
+            {/* Lock countdown badge */}
+            <AnimatePresence>
+              {menuLocked && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                  className="absolute top-12 right-12 flex items-center gap-2 bg-white/5 border border-white/10 px-4 py-2 rounded-2xl"
+                >
+                  <Lock size={12} className="text-white/40" />
+                  <span className="text-[10px] font-black uppercase tracking-widest text-white/40">Preparando…</span>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             <h2 className="text-5xl font-display font-black mb-16 italic text-gradient tracking-tighter uppercase underline decoration-purple-500/30 decoration-8 underline-offset-[16px]">Módulos de Aprendizaje</h2>
 
             <div className="w-full max-w-6xl">
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-16 justify-items-center">
-                <MenuCard icon={<Palette />} title="Pizarra" color="purple" onSelect={() => { setView('GAME'); setCurrentGame('PIZARRA'); }} />
-                <MenuCard icon={<Music />} title="Piano" color="cyan" onSelect={() => { setView('GAME'); setCurrentGame('PIANO'); }} />
-                <MenuCard icon={<Puzzle />} title="Puzzle" color="orange" onSelect={() => { setView('GAME'); setCurrentGame('PUZZLE'); }} />
-                <MenuCard icon={<div className="flex gap-1 items-end"><Circle size={40} className="text-white"/><Square size={30} className="text-white/40"/></div>} title="Colores" color="emerald" onSelect={() => { setView('GAME'); setCurrentGame('COLORES'); }} />
-                <MenuCard icon={<Compass />} title="Constelación" color="cyan" onSelect={() => { setView('GAME'); setCurrentGame('SOLAR'); }} />
-                <MenuCard icon={<Gamepad2 />} title="Balls Crush" color="orange" onSelect={() => { setView('GAME'); setCurrentGame('BRICKS'); }} />
-                <MenuCard icon={<BookOpen />} title="Sílabas" color="purple" onSelect={() => { setView('GAME'); setCurrentGame('SILABAS'); }} />
-                <MenuCard icon={<Shield />} title="Eco-Clasificador" color="emerald" onSelect={() => { setView('GAME'); setCurrentGame('ECO'); }} />
-                <MenuCard icon={<Award />} title="Ábaco" color="orange" onSelect={() => { setView('GAME'); setCurrentGame('ABACUS'); }} />
+                <MenuCard icon={<Palette />}    title="Pizarra"        color="purple"  locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('PIZARRA'); }} />
+                <MenuCard icon={<Music />}      title="Piano"          color="cyan"    locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('PIANO'); }} />
+                <MenuCard icon={<Puzzle />}     title="Puzzle"         color="orange"  locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('PUZZLE'); }} />
+                <MenuCard icon={<div className="flex gap-1 items-end"><Circle size={40} className="text-white"/><Square size={30} className="text-white/40"/></div>} title="Colores" color="emerald" locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('COLORES'); }} />
+                <MenuCard icon={<Compass />}    title="Constelación"   color="cyan"    locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('SOLAR'); }} />
+                <MenuCard icon={<Gamepad2 />}   title="Balls Crush"    color="orange"  locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('BRICKS'); }} />
+                <MenuCard icon={<BookOpen />}   title="Sílabas"        color="purple"  locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('SILABAS'); }} />
+                <MenuCard icon={<Shield />}     title="Eco-Clasificador" color="emerald" locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('ECO'); }} />
+                <MenuCard icon={<Award />}      title="Ábaco"          color="orange"  locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('ABACUS'); }} />
               </div>
             </div>
           </motion.div>
@@ -106,23 +130,23 @@ const SystemHub = ({ onExit }) => {
 
         {view === 'GAME' && (
           <motion.div key="game" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex-1 flex flex-col">
-            {/* Game Content — fills all space above the footer bar */}
+            {/* Game Content */}
             <div className="flex-1 relative">
-              {currentGame === 'PIZARRA' && <DrawingModule addPoints={addPoints} />}
-              {currentGame === 'PIANO' && <PianoModule addPoints={addPoints} videoRef={videoRef} />}
-              {currentGame === 'PUZZLE' && <PuzzleModule addPoints={addPoints} />}
-              {currentGame === 'COLORES' && <ShapesModule addPoints={addPoints} />}
-              {currentGame === 'SOLAR' && <SolarModule addPoints={addPoints} />}
-              {currentGame === 'BRICKS' && <BricksModule addPoints={addPoints} />}
-              {currentGame === 'SILABAS' && <SyllablesModule addPoints={addPoints} />}
-              {currentGame === 'ECO' && <EcoGuardianModule addPoints={addPoints} />}
-              {currentGame === 'ABACUS' && <MathAbacusModule addPoints={addPoints} />}
+              {currentGame === 'PIZARRA'  && <DrawingModule    addPoints={addPoints} />}
+              {currentGame === 'PIANO'    && <PianoModule      addPoints={addPoints} videoRef={videoRef} />}
+              {currentGame === 'PUZZLE'   && <PuzzleModule     addPoints={addPoints} />}
+              {currentGame === 'COLORES'  && <ShapesModule     addPoints={addPoints} />}
+              {currentGame === 'SOLAR'    && <SolarModule      addPoints={addPoints} />}
+              {currentGame === 'BRICKS'   && <BricksModule     addPoints={addPoints} />}
+              {currentGame === 'SILABAS'  && <SyllablesModule  addPoints={addPoints} />}
+              {currentGame === 'ECO'      && <EcoGuardianModule addPoints={addPoints} />}
+              {currentGame === 'ABACUS'   && <MathAbacusModule addPoints={addPoints} />}
             </div>
 
-            {/* Game Footer Bar (moved from top to bottom) */}
+            {/* Game Footer Bar */}
             <div className="h-16 glass-dark border-t border-white/10 flex items-center justify-between px-8 z-[100] bg-black/50 backdrop-blur-md">
               <div className="flex items-center gap-6">
-                <HandButton onClick={() => setView('MENU')} className="p-3" variant="red" dwellMs={800}><ArrowLeft size={18} /></HandButton>
+                <HandButton onClick={goToMenu} className="p-3" variant="red" dwellMs={800}><ArrowLeft size={18} /></HandButton>
                 <div className="flex items-center gap-3">
                   <img src={puceLogo} alt="PUCE Logo" className="h-9 w-auto" />
                   <div className="flex flex-col">
@@ -147,8 +171,8 @@ const SystemHub = ({ onExit }) => {
         )}
       </AnimatePresence>
 
-      {/* Global Score Widget — only on HOME/MENU; GAME has its own footer bar */}
-      <div className={`fixed bottom-8 right-8 z-50 pointer-events-none transition-opacity ${view === 'GAME' ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+      {/* Global Score Widget — only on HOME/MENU */}
+      <div className={`fixed bottom-8 right-8 z-50 pointer-events-none transition-opacity ${view === 'GAME' ? 'opacity-0' : 'opacity-100'}`}>
         <div className="glass p-6 rounded-[32px] border border-white/10 shadow-2xl flex items-center gap-6 bg-black/40 backdrop-blur-md">
           <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center">
             <Trophy className="text-amber-400" size={24} />
@@ -163,28 +187,28 @@ const SystemHub = ({ onExit }) => {
   );
 };
 
-const MenuCard = ({ icon, title, color, onSelect }) => (
+const MenuCard = ({ icon, title, color, onSelect, locked }) => (
   <div className="group relative w-52 md:w-56">
-    <div className={`absolute -inset-1.5 bg-gradient-to-br opacity-20 group-hover:opacity-100 blur-md rounded-[38px] transition-all duration-500 pointer-events-none ${
-      color === 'purple' ? 'from-purple-500 to-indigo-500 shadow-[0_0_20px_rgba(139,92,246,0.3)]' :
-      color === 'cyan' ? 'from-cyan-400 to-teal-500 shadow-[0_0_20px_rgba(34,211,238,0.3)]' :
-      color === 'orange' ? 'from-orange-500 to-amber-500 shadow-[0_0_20px_rgba(249,115,22,0.3)]' :
-      color === 'emerald' ? 'from-emerald-500 to-teal-600 shadow-[0_0_20px_rgba(16,185,129,0.3)]' :
-      'from-purple-500 to-indigo-500 shadow-[0_0_20px_rgba(139,92,246,0.3)]'
+    <div className={`absolute -inset-1.5 bg-gradient-to-br blur-md rounded-[38px] transition-all duration-500 pointer-events-none ${locked ? 'opacity-0' : 'opacity-20 group-hover:opacity-100'} ${
+      color === 'purple'  ? 'from-purple-500 to-indigo-500'  :
+      color === 'cyan'    ? 'from-cyan-400 to-teal-500'      :
+      color === 'orange'  ? 'from-orange-500 to-amber-500'   :
+      color === 'emerald' ? 'from-emerald-500 to-teal-600'   :
+      'from-purple-500 to-indigo-500'
     }`} />
-    
-    <HandButton 
-      onClick={onSelect} 
-      className="w-full aspect-[4/3] rounded-[36px] flex flex-col items-center justify-center gap-4 border border-white/10 bg-white/5 backdrop-blur-md shadow-2xl"
-      variant={color} 
-      dwellMs={900}
+
+    <HandButton
+      onClick={locked ? undefined : onSelect}
+      className={`w-full aspect-[4/3] rounded-[36px] flex flex-col items-center justify-center gap-4 border border-white/10 bg-white/5 backdrop-blur-md shadow-2xl transition-all ${locked ? 'opacity-40 cursor-not-allowed' : ''}`}
+      variant={locked ? 'default' : color}
+      dwellMs={locked ? 99999 : 900}
     >
-      <div className="p-4 bg-white/10 rounded-2xl group-hover:scale-110 transition-transform duration-500 ring-1 ring-white/15">
+      <div className={`p-4 bg-white/10 rounded-2xl ring-1 ring-white/15 transition-transform duration-500 ${locked ? '' : 'group-hover:scale-110'}`}>
         {React.cloneElement(icon, { size: 36 })}
       </div>
       <div className="flex flex-col items-center gap-1">
         <span className="font-display text-xl md:text-2xl font-black italic tracking-tight uppercase text-white drop-shadow-md">{title}</span>
-        <div className="w-10 h-1 bg-white/30 rounded-full group-hover:w-16 transition-all duration-500" />
+        <div className={`h-1 bg-white/30 rounded-full transition-all duration-500 ${locked ? 'w-6' : 'w-10 group-hover:w-16'}`} />
       </div>
     </HandButton>
   </div>

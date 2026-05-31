@@ -1,470 +1,309 @@
 import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Award, RefreshCw, Volume2, VolumeX, Sparkles } from 'lucide-react';
-import HandButton from '../HandButton';
+import { Volume2, VolumeX, Sparkles } from 'lucide-react';
 
-const TARGET_SUMS = [5, 10, 15, 20];
+// Progresión de metas: índice crece con streak
+const TARGET_SEQUENCE = [5, 8, 10, 12, 15, 18, 20, 25, 30];
+const FOOTER_H = 64; // altura de la barra inferior en px
 
 const MathAbacusModule = memo(({ addPoints }) => {
-  const [level, setLevel] = useState(1); // 1 to 4 (Targets: 5, 10, 15, 20)
-  const [targetSum, setTargetSum] = useState(5);
-  const [currentSum, setCurrentSum] = useState(0);
-  const [selectedNumbers, setSelectedNumbers] = useState([]);
-  const [streak, setStreak] = useState(0);
+  const [targetSum, setTargetSum]     = useState(TARGET_SEQUENCE[0]);
+  const [currentSum, setCurrentSum]   = useState(0);
+  const [selectedNums, setSelectedNums] = useState([]);
+  const [streak, setStreak]           = useState(0);
   const [soundEnabled, setSoundEnabled] = useState(true);
-  const [bubbles, setBubbles] = useState([]);
-  const [particles, setParticles] = useState([]);
+  const [bubbles, setBubbles]         = useState([]);
 
-  const audioCtxRef = useRef(null);
-  const frameRef = useRef(null);
-  const spawnTimerRef = useRef(null);
-  const idCounter = useRef(0);
+  const audioCtxRef   = useRef(null);
+  const frameRef      = useRef(null);
+  const spawnTimer    = useRef(null);
+  const idCounter     = useRef(0);
+  const soundEnabledRef = useRef(soundEnabled);
+  soundEnabledRef.current = soundEnabled;
+  const addPointsRef  = useRef(addPoints);
+  addPointsRef.current = addPoints;
 
-  // Estado mutable en Ref para correr a 60 FPS
+  // ── Toda la lógica mutable vive aquí ──
   const stateRef = useRef({
-    level: 1,
-    targetSum: 5,
-    selectedItems: [], // array de bubble objects seleccionados
-    bubbles: [],
-    particles: [],
-    streak: 0,
-    wasPinching: [false, false]
+    targetSum:     TARGET_SEQUENCE[0],
+    targetIdx:     0,
+    selectedItems: [],
+    bubbles:       [],
+    particles:     [],
+    streak:        0,
+    wasPinching:   false,   // single-hand edge detection
   });
 
-  // Stable sync — no state captures; React bails out on unchanged values automatically.
-  const syncReactStates = useCallback(() => {
-    const s = stateRef.current;
-    setLevel(s.level);
-    setTargetSum(s.targetSum);
-    setStreak(s.streak);
-    const sum = s.selectedItems.reduce((acc, curr) => acc + curr.value, 0);
-    setCurrentSum(sum);
-    setSelectedNumbers(s.selectedItems.map(item => item.value));
-  }, []);
-
-  const addPointsRef = useRef(addPoints);
-  addPointsRef.current = addPoints;
-  const playSoundRef = useRef(null);
-
-  // Sintetizar tonos de audio Web Audio API
+  // ── Audio ──────────────────────────────────────────────────────────────────
   const playSound = useCallback((type, value = 0) => {
-    if (!soundEnabled) return;
+    if (!soundEnabledRef.current) return;
     try {
-      if (!audioCtxRef.current) {
+      if (!audioCtxRef.current)
         audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
-      }
       const ctx = audioCtxRef.current;
       if (ctx.state === 'suspended') ctx.resume();
 
       const osc = ctx.createOscillator();
-      const gainNode = ctx.createGain();
-      osc.connect(gainNode);
-      gainNode.connect(ctx.destination);
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
 
       if (type === 'select') {
-        // Tono ascendente según el número seleccionado
-        const baseFreq = 300 + value * 50;
         osc.type = 'sine';
-        osc.frequency.setValueAtTime(baseFreq, ctx.currentTime);
-        gainNode.gain.setValueAtTime(0.12, ctx.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
-        osc.start();
-        osc.stop(ctx.currentTime + 0.16);
+        osc.frequency.setValueAtTime(300 + value * 50, ctx.currentTime);
+        gain.gain.setValueAtTime(0.12, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+        osc.start(); osc.stop(ctx.currentTime + 0.16);
       } else if (type === 'deselect') {
         osc.type = 'sine';
         osc.frequency.setValueAtTime(300, ctx.currentTime);
-        osc.frequency.linearRampToValueAtTime(200, ctx.currentTime + 0.1);
-        gainNode.gain.setValueAtTime(0.1, ctx.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
-        osc.start();
-        osc.stop(ctx.currentTime + 0.14);
+        osc.frequency.linearRampToValueAtTime(180, ctx.currentTime + 0.12);
+        gain.gain.setValueAtTime(0.1, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.14);
+        osc.start(); osc.stop(ctx.currentTime + 0.15);
       } else if (type === 'match_ok') {
-        // Triada triunfal
         const now = ctx.currentTime;
-        const notes = [523.25, 659.25, 783.99]; // C5, E5, G5
-        notes.forEach((freq, i) => {
-          const o = ctx.createOscillator();
-          const g = ctx.createGain();
-          o.type = 'sine';
-          o.frequency.value = freq;
-          o.connect(g);
-          g.connect(ctx.destination);
+        [523.25, 659.25, 783.99].forEach((freq, i) => {
+          const o = ctx.createOscillator(); const g = ctx.createGain();
+          o.type = 'sine'; o.frequency.value = freq;
+          o.connect(g); g.connect(ctx.destination);
           g.gain.setValueAtTime(0, now + i * 0.08);
           g.gain.linearRampToValueAtTime(0.2, now + i * 0.08 + 0.02);
           g.gain.exponentialRampToValueAtTime(0.001, now + i * 0.08 + 0.35);
-          o.start(now + i * 0.08);
-          o.stop(now + i * 0.08 + 0.4);
+          o.start(now + i * 0.08); o.stop(now + i * 0.08 + 0.4);
         });
       } else if (type === 'overlimit') {
         osc.type = 'triangle';
         osc.frequency.setValueAtTime(140, ctx.currentTime);
-        gainNode.gain.setValueAtTime(0.25, ctx.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
-        osc.start();
-        osc.stop(ctx.currentTime + 0.38);
+        gain.gain.setValueAtTime(0.25, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+        osc.start(); osc.stop(ctx.currentTime + 0.38);
       }
-    } catch (e) {
-      console.warn("Audio failed", e);
-    }
-  }, [soundEnabled]);
-  playSoundRef.current = playSound;
-
-  // Generar burbuja de número flotante
-  const spawnBubble = useCallback(() => {
-    const s = stateRef.current;
-    idCounter.current += 1;
-
-    // Generar un número razonable para la suma objetivo actual
-    // Evitamos números mayores que targetSum
-    const maxVal = Math.min(9, s.targetSum);
-    
-    // Algoritmo para ayudar al niño a completar la suma:
-    // Si la suma actual es menor al objetivo, tenemos un 35% de chance de spawnear exactamente el número faltante
-    const currentSumVal = s.selectedItems.reduce((acc, curr) => acc + curr.value, 0);
-    const needed = s.targetSum - currentSumVal;
-    let numberVal = Math.floor(Math.random() * maxVal) + 1;
-
-    if (needed > 0 && needed <= 9 && Math.random() < 0.35) {
-      numberVal = needed;
-    }
-
-    const speedScale = 0.28 + Math.random() * 0.16;
-    const newBubble = {
-      id: idCounter.current,
-      value: numberVal,
-      x: 15 + Math.random() * 70,
-      y: 110, // Comienza abajo
-      speed: speedScale,
-      amplitude: 2 + Math.random() * 3, // Amplitud del vaivén senoidal
-      frequency: 0.02 + Math.random() * 0.02,
-      phase: Math.random() * Math.PI * 2,
-      baseX: 15 + Math.random() * 70,
-      radius: 35, // radio de colisión
-      isSelected: false,
-      pulse: 1.0,
-      errorTimer: 0 // Para sacudida/shake en caso de error
-    };
-    
-    // Registrar baseX para mantener la oscilación en torno al centro del spawn
-    newBubble.baseX = newBubble.x;
-    s.bubbles.push(newBubble);
-    setBubbles([...s.bubbles]);
+    } catch (e) { console.warn('Audio failed', e); }
   }, []);
 
-  // Intervalo de Spawning de Burbujas
-  useEffect(() => {
-    spawnTimerRef.current = setInterval(() => {
-      const s = stateRef.current;
-      if (s.bubbles.length < 7) {
-        spawnBubble();
-      }
-    }, 2500);
+  // ── Spawn de burbuja ───────────────────────────────────────────────────────
+  const spawnBubble = useCallback(() => {
+    const s = stateRef.current;
+    if (s.bubbles.length >= 8) return;
 
-    return () => clearInterval(spawnTimerRef.current);
+    idCounter.current += 1;
+    const maxVal = Math.min(9, s.targetSum);
+    const currentTotal = s.selectedItems.reduce((a, b) => a + b.value, 0);
+    const needed = s.targetSum - currentTotal;
+
+    let val = Math.floor(Math.random() * maxVal) + 1;
+    if (needed > 0 && needed <= 9 && Math.random() < 0.35) val = needed;
+
+    const bubble = {
+      id: idCounter.current,
+      value: val,
+      x: 15 + Math.random() * 70,
+      y: 108,
+      baseX: 0,
+      speed: 0.25 + Math.random() * 0.15 + s.targetIdx * 0.03, // faster at higher difficulty
+      amplitude: 2 + Math.random() * 3,
+      frequency: 0.02 + Math.random() * 0.02,
+      phase: Math.random() * Math.PI * 2,
+      isSelected: false,
+      errorTimer: 0,
+    };
+    bubble.baseX = bubble.x;
+    s.bubbles.push(bubble);
+  }, []);
+
+  useEffect(() => {
+    spawnTimer.current = setInterval(spawnBubble, 2200);
+    return () => clearInterval(spawnTimer.current);
   }, [spawnBubble]);
 
-  // Actualizador principal de físicas a 60 FPS
+  // ── Loop principal 60 FPS ─────────────────────────────────────────────────
   useEffect(() => {
-    const updatePhysics = () => {
-      const screenW = window.innerWidth;
-      const screenH = window.innerHeight;
-      const s = stateRef.current;
+    const loop = () => {
+      const s     = stateRef.current;
+      const sw    = window.innerWidth;
+      const sh    = window.innerHeight;
+      const gameH = sh - FOOTER_H; // área de juego real (sin footer)
 
-      // Obtener datos globales de la IA
-      const handData = window.latestHandData || { cursors: [], gestures: [] };
-      const cursors = handData.cursors || [];
-      const gestures = handData.gestures || [];
+      const { cursors = [], gestures = [] } = window.latestHandData || {};
+      const cursor   = cursors[0];
+      const gesture  = gestures[0];
+      const isPinch  = !!gesture?.isPinching;
 
-      // Mapear cursores a porcentaje conservando índices
-      const mappedCursors = cursors.map(c => ({
-        x: (c.x / screenW) * 100,
-        y: (c.y / screenH) * 100,
-        isVisible: c.isVisible
-      }));
+      // ── 1. Partículas ────────────────────────────────────────────────────
+      s.particles = s.particles
+        .map(p => ({ ...p, x: p.x + p.vx, y: p.y + p.vy, alpha: p.alpha - p.decay }))
+        .filter(p => p.alpha > 0);
 
-      // 1. Partículas flotando y cayendo
-      s.particles = s.particles.map(p => {
-        p.x += p.vx;
-        p.y += p.vy;
-        p.alpha -= p.decay;
-        return p;
-      }).filter(p => p.alpha > 0);
+      // ── 2. Mover burbujas ────────────────────────────────────────────────
+      s.bubbles = s.bubbles.map(b => {
+        const nb = { ...b };
+        nb.y -= nb.speed;
+        const elapsed = nb.phase + (108 - nb.y) * nb.frequency;
+        nb.x = nb.baseX + Math.sin(elapsed) * nb.amplitude;
+        nb.x = Math.max(8, Math.min(92, nb.x));
+        if (nb.errorTimer > 0) nb.errorTimer--;
+        return nb;
+      }).filter(b => b.y > -12);
 
-      // 2. Mover burbujas flotantes
-      let changed = false;
-      let activeBubbles = s.bubbles.map(b => {
-        const bCopy = { ...b };
-        
-        // Mover hacia arriba
-        bCopy.y -= bCopy.speed;
+      // ── 3. Detección de pinza (edge — solo dispara al iniciar) ───────────
+      const startedPinch = isPinch && !s.wasPinching;
+      s.wasPinching = isPinch;
 
-        // Oscilación horizontal senoidal
-        const elapsedFrames = bCopy.phase + (110 - bCopy.y) * bCopy.frequency;
-        bCopy.x = bCopy.baseX + Math.sin(elapsedFrames) * bCopy.amplitude;
+      if (startedPinch && cursor?.isVisible) {
+        // Cursor está en píxeles de pantalla completa.
+        // Burbujas están en % del área de juego → convertir a píxeles iguales.
+        const cPx = cursor.x;
+        const cPy = cursor.y; // cursor Y en px desde arriba de la ventana
 
-        // Rebotes contra límites izquierdo y derecho
-        if (bCopy.x < 10) bCopy.x = 10;
-        if (bCopy.x > 90) bCopy.x = 90;
+        let hit = null;
+        let hitDist = Infinity;
+        s.bubbles.forEach(b => {
+          const bPx = (b.x / 100) * sw;
+          const bPy = (b.y / 100) * gameH; // burbuja en píxeles dentro del área de juego
+          const dist = Math.hypot(cPx - bPx, cPy - bPy);
+          if (dist < 75 && dist < hitDist) { hit = b; hitDist = dist; } // 75px radio
+        });
 
-        // Reducir timer de sacudida de error
-        if (bCopy.errorTimer > 0) {
-          bCopy.errorTimer -= 1;
-          changed = true;
-        }
+        if (hit) {
+          if (hit.isSelected) {
+            // Deseleccionar
+            hit.isSelected = false;
+            s.selectedItems = s.selectedItems.filter(i => i.id !== hit.id);
+            playSound('deselect');
+          } else {
+            // Seleccionar
+            hit.isSelected = true;
+            s.selectedItems.push(hit);
+            playSound('select', hit.value);
 
-        return bCopy;
-      }).filter(b => b.y > -15); // Eliminar burbujas que superan la parte superior
-
-      // Si alguna burbuja se eliminó por superar el tope, marcamos cambios
-      if (activeBubbles.length !== s.bubbles.length) {
-        changed = true;
-      }
-
-      // 3. Chequear colisiones de cursor y pinch (selección mediante pinza)
-      if (!s.wasPinching) {
-        s.wasPinching = [false, false];
-      }
-
-      mappedCursors.forEach((cursor, handIdx) => {
-        if (!cursor.isVisible) return;
-        const isPinching = gestures[handIdx]?.isPinching;
-        const startedPinching = isPinching && !s.wasPinching[handIdx];
-        s.wasPinching[handIdx] = isPinching;
-
-        if (startedPinching) {
-          let hitBubble = null;
-          activeBubbles.forEach(b => {
-            const dx = b.x - cursor.x;
-            const dy = b.y - cursor.y;
-            const dist = Math.hypot(dx, dy);
-            if (dist < 7.0) { // Radio de colisión
-              hitBubble = b;
+            // Partículas
+            for (let k = 0; k < 8; k++) {
+              s.particles.push({
+                x: hit.x, y: hit.y,
+                vx: (Math.random() - 0.5) * 2.5, vy: (Math.random() - 0.5) * 2.5,
+                decay: 0.035, alpha: 1, color: '#A78BFA'
+              });
             }
-          });
 
-          if (hitBubble) {
-            changed = true;
-            if (hitBubble.isSelected) {
-              // Deseleccionar
-              hitBubble.isSelected = false;
-              s.selectedItems = s.selectedItems.filter(item => item.id !== hitBubble.id);
-              playSoundRef.current('deselect');
-            } else {
-              // Seleccionar
-              hitBubble.isSelected = true;
-              s.selectedItems.push(hitBubble);
-              playSoundRef.current('select', hitBubble.value);
+            const total = s.selectedItems.reduce((a, b) => a + b.value, 0);
 
-              // Partículas al tocar la burbuja
-              for (let k = 0; k < 10; k++) {
-                s.particles.push({
-                  x: hitBubble.x,
-                  y: hitBubble.y,
-                  vx: (Math.random() - 0.5) * 2,
-                  vy: (Math.random() - 0.5) * 2,
-                  decay: 0.03,
-                  alpha: 1.0,
-                  color: '#A78BFA'
-                });
-              }
+            if (total === s.targetSum) {
+              // ✅ Suma correcta
+              playSound('match_ok');
+              addPointsRef.current(50 + s.streak * 10);
+              s.streak++;
 
-              // VALIDAR SUMA ACTUAL
-              const totalSum = s.selectedItems.reduce((acc, curr) => acc + curr.value, 0);
-              
-              if (totalSum === s.targetSum) {
-                // ¡Suma Completada con éxito!
-                playSoundRef.current('match_ok');
-                addPointsRef.current(70);
-                s.streak += 1;
+              // Explosión de burbujas seleccionadas
+              s.selectedItems.forEach(item => {
+                for (let k = 0; k < 12; k++) {
+                  s.particles.push({
+                    x: item.x, y: item.y,
+                    vx: (Math.random() - 0.5) * 4, vy: (Math.random() - 0.5) * 4,
+                    decay: 0.02, alpha: 1, color: '#34D399'
+                  });
+                }
+              });
 
-                // Estallido de todas las burbujas seleccionadas
-                s.selectedItems.forEach(item => {
-                  for (let k = 0; k < 15; k++) {
-                    s.particles.push({
-                      x: item.x,
-                      y: item.y,
-                      vx: (Math.random() - 0.5) * 4,
-                      vy: (Math.random() - 0.5) * 4,
-                      decay: 0.02,
-                      alpha: 1.0,
-                      color: '#34D399' // Verde éxito
-                    });
-                  }
-                });
+              // Quitar burbujas seleccionadas
+              const ids = new Set(s.selectedItems.map(i => i.id));
+              s.bubbles = s.bubbles.filter(b => !ids.has(b.id));
+              s.selectedItems = [];
 
-                // Eliminar burbujas seleccionadas del array de flotantes
-                const selectedIds = s.selectedItems.map(item => item.id);
-                activeBubbles = activeBubbles.filter(bubble => !selectedIds.includes(bubble.id));
-                s.selectedItems = [];
+              // Avanzar dificultad secuencialmente
+              s.targetIdx = Math.min(s.targetIdx + 1, TARGET_SEQUENCE.length - 1);
+              s.targetSum = TARGET_SEQUENCE[s.targetIdx];
 
-                // Definir nueva suma objetivo o subir nivel
-                const nextTargetIdx = Math.floor(Math.random() * TARGET_SUMS.length);
-                const nextSum = TARGET_SUMS[nextTargetIdx];
-                s.targetSum = nextSum;
-                s.level = Math.max(1, nextTargetIdx + 1);
-
-              } else if (totalSum > s.targetSum) {
-                // ¡Superó el límite! (Error)
-                playSoundRef.current('overlimit');
-                s.streak = 0;
-
-                // Animar sacudida (shake)
-                s.selectedItems.forEach(item => {
-                  const actualBubble = activeBubbles.find(bubble => bubble.id === item.id);
-                  if (actualBubble) {
-                    actualBubble.isSelected = false;
-                    actualBubble.errorTimer = 25; // 25 frames de shake
-                  }
-                });
-
-                s.selectedItems = [];
-              }
+            } else if (total > s.targetSum) {
+              // ❌ Se pasó del límite
+              playSound('overlimit');
+              s.streak = 0;
+              s.selectedItems.forEach(item => {
+                const b = s.bubbles.find(b => b.id === item.id);
+                if (b) { b.isSelected = false; b.errorTimer = 20; }
+              });
+              s.selectedItems = [];
             }
           }
         }
-      });
-
-      s.bubbles = activeBubbles;
-      setBubbles(activeBubbles);
-      setParticles([...s.particles]);
-      if (changed || activeBubbles.length > 0) {
-        syncReactStates();
       }
 
-      frameRef.current = requestAnimationFrame(updatePhysics);
+      // ── 4. Sincronizar React (batched) ───────────────────────────────────
+      setBubbles([...s.bubbles]);
+      setTargetSum(s.targetSum);
+      setStreak(s.streak);
+      setCurrentSum(s.selectedItems.reduce((a, b) => a + b.value, 0));
+      setSelectedNums(s.selectedItems.map(i => i.value));
+
+      frameRef.current = requestAnimationFrame(loop);
     };
 
-    frameRef.current = requestAnimationFrame(updatePhysics);
+    frameRef.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(frameRef.current);
-  }, []); // Stable loop: callbacks via refs, syncReactStates is stable ([] deps)
-
-  const resetGame = () => {
-    const s = stateRef.current;
-    s.level = 1;
-    s.targetSum = 5;
-    s.selectedItems = [];
-    s.bubbles = [];
-    s.particles = [];
-    s.wasPinching = [false, false];
-
-    setLevel(1);
-    setTargetSum(5);
-    setStreak(0);
-    setCurrentSum(0);
-    setSelectedNumbers([]);
-    setBubbles([]);
-    setParticles([]);
-  };
+  }, [playSound]);
 
   return (
-    <div className="w-full h-full relative overflow-hidden select-none flex flex-col items-center">
-      
-      {/* Control Volumen (Top Right) */}
-      <button 
-        onClick={() => setSoundEnabled(prev => !prev)}
-        className="absolute top-4 right-12 z-50 p-4 glass rounded-2xl border border-white/10 text-white/40 hover:text-white transition-all hover:scale-105"
+    <div className="w-full h-full relative overflow-hidden select-none">
+
+      {/* Mute */}
+      <button
+        onClick={() => setSoundEnabled(p => !p)}
+        className="absolute top-4 right-12 z-50 p-3 glass rounded-2xl border border-white/10 text-white/40 hover:text-white transition-all"
       >
-        {soundEnabled ? <Volume2 size={20} /> : <VolumeX size={20} />}
+        {soundEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
       </button>
 
-      {/* Panel Superior: Meta y Suma Actual */}
-      <div className="absolute top-[28%] left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-4 text-center z-10 w-full max-w-lg px-6">
-        <motion.div 
-          initial={{ scale: 0.9, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          className="glass-dark px-10 py-5 rounded-[32px] border border-white/10 shadow-2xl flex flex-col items-center gap-3 bg-black/40 backdrop-blur-md"
-        >
-          <div className="text-[10px] font-black text-amber-400 uppercase tracking-[0.4em] mb-1">Ábaco Matemático</div>
-          
-          <div className="flex items-center gap-8">
-            {/* Ecuación dinámica */}
-            <div className="flex flex-col text-left">
-              <span className="text-[9px] font-bold text-white/40 uppercase tracking-widest leading-none">Ecuación</span>
-              <span className="text-2xl font-display font-black text-white tracking-wide mt-1">
-                {selectedNumbers.length > 0 ? selectedNumbers.join(' + ') : '0'} = {currentSum}
-              </span>
-            </div>
-            
-            <div className="h-8 w-[1px] bg-white/20" />
-
-            {/* Suma Objetivo */}
-            <div className="flex flex-col text-left">
-              <span className="text-[9px] font-bold text-amber-400 uppercase tracking-widest leading-none">Objetivo</span>
-              <span className="text-3xl font-display font-black text-amber-400 italic tracking-tighter mt-1 animate-pulse">
-                {targetSum}
-              </span>
-            </div>
-          </div>
-        </motion.div>
-
-        {/* Racha / Combo Streak */}
-        {streak > 1 && (
-          <motion.div 
-            initial={{ scale: 0 }} animate={{ scale: 1 }}
-            className="flex items-center gap-2 text-amber-400 text-[10px] font-black uppercase tracking-widest bg-amber-500/10 px-4 py-1.5 rounded-full border border-amber-500/20"
-          >
-            <Sparkles size={12} fill="currentColor" /> ¡Racha de Sumas x{streak}!
-          </motion.div>
+      {/* Header compacto */}
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-4 glass-dark px-6 py-2.5 rounded-2xl border border-white/10 shadow-xl">
+        <span className="text-[9px] font-black text-amber-400 uppercase tracking-[0.3em]">Objetivo</span>
+        <span className="text-2xl font-display font-black text-amber-400 italic">{targetSum}</span>
+        <div className="w-px h-5 bg-white/20" />
+        <span className="text-[9px] font-black text-white/40 uppercase tracking-[0.3em]">Suma</span>
+        <span className="text-2xl font-display font-black text-white">{currentSum}</span>
+        {selectedNums.length > 0 && (
+          <>
+            <div className="w-px h-5 bg-white/20" />
+            <span className="text-xs text-white/50 font-mono">{selectedNums.join(' + ')}</span>
+          </>
         )}
-      </div>
-
-      {/* RENDER DE BURBUJAS DE NÚMEROS */}
-      <div className="absolute inset-0 pointer-events-none z-20 overflow-hidden">
-        {bubbles.map(b => {
-          const isErr = b.errorTimer > 0;
-
-          return (
-            <div
-              key={b.id}
-              className={`absolute transform -translate-x-1/2 -translate-y-1/2`}
-              style={{
-                left: `${b.x}%`,
-                top: `${b.y}%`,
-                scale: b.pulse,
-                transform: `translate(-50%, -50%) ${isErr ? `translate(${Math.sin(b.errorTimer * 1.5) * 6}px, 0)` : ''}`
-              }}
+        <AnimatePresence>
+          {streak > 1 && (
+            <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }}
+              className="flex items-center gap-1 text-amber-400 font-black text-[10px] ml-2"
             >
-              <div 
-                className={`w-20 h-20 rounded-full border-2 flex items-center justify-center font-display text-3xl font-black italic shadow-2xl transition-all duration-300 relative ${
-                  b.isSelected 
-                    ? 'bg-purple-500/80 border-white text-white shadow-[0_0_35px_#a78bfa]'
-                    : isErr 
-                      ? 'bg-red-500/30 border-red-500 text-red-400 shadow-red-500/30 animate-shake'
-                      : 'bg-gradient-to-tr from-cyan-500/20 to-blue-500/10 border-cyan-500/40 text-white backdrop-blur-md shadow-cyan-500/10'
-                }`}
-              >
-                {b.value}
-              </div>
-            </div>
-          );
-        })}
+              <Sparkles size={11} fill="currentColor" /> ×{streak}
+            </motion.span>
+          )}
+        </AnimatePresence>
       </div>
 
-      {/* RENDER DE PARTÍCULAS EN DOM */}
-      <div className="absolute inset-0 pointer-events-none z-30">
-        {particles.map((p, idx) => (
-          <div
-            key={idx}
-            className="absolute transform -translate-x-1/2 -translate-y-1/2 text-2xl font-black select-none pointer-events-none"
+      {/* Burbujas */}
+      <div className="absolute inset-0 pointer-events-none z-20">
+        {bubbles.map(b => (
+          <div key={b.id}
+            className="absolute -translate-x-1/2 -translate-y-1/2"
             style={{
-              left: `${p.x}%`,
-              top: `${p.y}%`,
-              color: p.color,
-              opacity: p.alpha,
-              textShadow: `0 0 10px ${p.color}`,
-              transform: `translate(-50%, -50%) scale(${0.5 + p.alpha * 0.7})`
+              left: `${b.x}%`,
+              top: `${b.y}%`,
+              transform: `translate(-50%, -50%) ${b.errorTimer > 0 ? `translateX(${Math.sin(b.errorTimer * 1.8) * 5}px)` : ''}`,
             }}
           >
-            ★
+            <div className={`w-20 h-20 rounded-full border-2 flex items-center justify-center font-display text-3xl font-black italic shadow-xl transition-all duration-150 ${
+              b.isSelected
+                ? 'bg-purple-500/80 border-white text-white shadow-[0_0_30px_#a78bfa]'
+                : b.errorTimer > 0
+                  ? 'bg-red-500/30 border-red-500 text-red-400'
+                  : 'bg-cyan-500/15 border-cyan-500/40 text-white backdrop-blur-md'
+            }`}>
+              {b.value}
+            </div>
           </div>
         ))}
       </div>
 
-      {/* Pie de instrucciones */}
-      <div className="absolute bottom-6 flex items-center gap-6 glass px-8 py-3.5 rounded-[24px] border border-white/10 animate-pulse z-30">
-        <span className="text-2xl">🖐️</span>
-        <p className="text-[9px] font-black uppercase tracking-[0.2em] text-white/50 italic">
-          Usa pinzas en el aire sobre los números para seleccionarlos. ¡Debes sumar exactamente el valor objetivo!
+      {/* Instrucción */}
+      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 glass px-7 py-3 rounded-2xl border border-white/10 animate-pulse">
+        <p className="text-[9px] font-black uppercase tracking-[0.2em] text-white/50 italic text-center">
+          Pinza sobre los números para seleccionarlos — suma exactamente {targetSum}
         </p>
       </div>
     </div>
