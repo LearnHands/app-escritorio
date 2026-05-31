@@ -2,6 +2,7 @@
   "name": "learnhands",
   "version": "2.0.0",
   "description": "LearnHands — Plataforma educativa de movimiento natural para Fe y Alegría Ecuador",
+  "author": "Fe y Alegría Ecuador <info@feyalegria.edu.ec>",
   "type": "commonjs",
   "main": "electron/main.js",
   "scripts": {
@@ -39,7 +40,7 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
-      "node_modules/@mediapipe/**/*"
+      "node_modules/@mediapipe/tasks-vision/**/*"
     ],
     "win": {
       "target": "nsis"
