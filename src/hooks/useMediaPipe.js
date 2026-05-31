@@ -8,7 +8,6 @@ let handLandmarkerInstance = null;
 // --- GESTURE & CURSOR MATH HELPERS ---
 const distance3D = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, (a.z - b.z) * 0.5);
 
-// Robust extension: tip must be clearly further from the MCP knuckle than the PIP joint.
 const isFingerExt = (tip, pip, mcp) => {
   const tipToMcp = distance3D(tip, mcp);
   const pipToMcp = distance3D(pip, mcp);
@@ -44,8 +43,6 @@ const calculateGestures = (allLandmarks, handednessList) => {
     const pinkyMcp  = landmarks[17];
 
     const dist = distance3D(thumbTip, indexTip);
-
-    // Hysteresis: harder to start a pinch (0.085) than to keep one (0.12)
     const wasPinching = lastPinchStates[handIdx] || false;
     const threshold = wasPinching ? 0.12 : 0.085;
     const isPinching = dist < threshold;
@@ -80,39 +77,52 @@ const calculateCursors = (allLandmarks, videoEl) => {
   return allLandmarks.map((landmarks) => {
     const indexTip = landmarks[8];
     if (!indexTip) return { x: 0, y: 0, isVisible: false };
-
-    // Flip X to mirror the video (video is CSS scale-x-[-1])
     const normX = 1 - indexTip.x;
     const normY = indexTip.y;
-
-    const targetX = normX * scaledW - offsetX;
-    const targetY = normY * scaledH - offsetY;
-
     return {
-      x: Math.max(0, Math.min(screenW, targetX)),
-      y: Math.max(0, Math.min(screenH, targetY)),
+      x: Math.max(0, Math.min(screenW, normX * scaledW - offsetX)),
+      y: Math.max(0, Math.min(screenH, normY * scaledH - offsetY)),
       isVisible: true
     };
   });
 };
 
-// Convert tasks-vision flat NormalizedLandmark[] (21 per hand) into the same
-// nested array format the rest of the app expects: [[{x,y,z}×21], ...]
-const convertLandmarks = (result) => {
-  if (!result?.landmarks?.length) return [];
-  return result.landmarks; // tasks-vision already returns [{x,y,z}] per hand
-};
+// Build the HandLandmarker — tries GPU first, falls back to CPU automatically
+async function buildLandmarker() {
+  const vision = await FilesetResolver.forVisionTasks(
+    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm'
+  );
+
+  const opts = {
+    baseOptions: {
+      modelAssetPath:
+        'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
+      delegate: 'GPU'
+    },
+    runningMode: 'VIDEO',
+    numHands: 1,                     // 1 mano = mitad de costo vs 2
+    minHandDetectionConfidence: 0.5,
+    minHandPresenceConfidence: 0.5,
+    minTrackingConfidence: 0.5
+  };
+
+  try {
+    return await HandLandmarker.createFromOptions(vision, opts);
+  } catch (gpuErr) {
+    console.warn('[LearnHands] GPU delegate falló, usando CPU:', gpuErr.message);
+    opts.baseOptions.delegate = 'CPU';
+    return await HandLandmarker.createFromOptions(vision, opts);
+  }
+}
 
 export const useMediaPipe = () => {
-  const [data, setData] = useState({
-    isLoaded: false,
-    isDetecting: false,
-    error: null
-  });
+  const [data, setData] = useState({ isLoaded: false, isDetecting: false, error: null });
 
-  const videoRef = useRef(null);
+  const videoRef    = useRef(null);
   const isActiveRef = useRef(false);
-  const rafRef = useRef(null);
+  const rafRef      = useRef(null);
+  const frameCount  = useRef(0);       // for detection throttle
+  const lastTs      = useRef(-1);
 
   const stopMediaPipe = useCallback(() => {
     isActiveRef.current = false;
@@ -128,69 +138,48 @@ export const useMediaPipe = () => {
 
   const initMediaPipe = useCallback(async (videoElement) => {
     if (!videoElement || isActiveRef.current) return;
-    videoRef.current = videoElement;
+    videoRef.current  = videoElement;
     isActiveRef.current = true;
 
     try {
-      // Build the HandLandmarker once for the whole app session
-      if (!handLandmarkerPromise) {
-        handLandmarkerPromise = (async () => {
-          const vision = await FilesetResolver.forVisionTasks(
-            'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm'
-          );
-          return HandLandmarker.createFromOptions(vision, {
-            baseOptions: {
-              modelAssetPath:
-                'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
-              delegate: 'GPU'
-            },
-            runningMode: 'VIDEO',
-            numHands: 2,
-            minHandDetectionConfidence: 0.45,
-            minHandPresenceConfidence: 0.45,
-            minTrackingConfidence: 0.45
-          });
-        })();
-      }
-
+      if (!handLandmarkerPromise) handLandmarkerPromise = buildLandmarker();
       handLandmarkerInstance = await handLandmarkerPromise;
       if (!isActiveRef.current) return;
 
-      // Open webcam
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' }
       });
-
       if (!isActiveRef.current) return;
+
       videoRef.current.srcObject = stream;
       try { await videoRef.current.play(); } catch (_) {}
 
       setData(prev => ({ ...prev, isLoaded: true }));
 
-      let lastTimestamp = -1;
-
       const process = () => {
         if (!isActiveRef.current) return;
 
-        const video = videoRef.current;
-        if (video && video.readyState >= 2) {
-          const nowMs = performance.now();
-          // tasks-vision requires strictly increasing timestamps
-          if (nowMs > lastTimestamp) {
-            lastTimestamp = nowMs;
-            const result = handLandmarkerInstance.detectForVideo(video, nowMs);
+        frameCount.current++;
 
-            const landmarks = convertLandmarks(result);
-            const cursors   = calculateCursors(landmarks, video);
-            const gestures  = calculateGestures(landmarks, result.handedness);
+        // Run inference every OTHER frame (~30 fps detection, 60 fps render)
+        // This frees ~half the 16ms budget so the render loop never stutters.
+        if (frameCount.current % 2 === 0) {
+          const video = videoRef.current;
+          if (video && video.readyState >= 2) {
+            const nowMs = performance.now();
+            if (nowMs > lastTs.current) {
+              lastTs.current = nowMs;
 
-            window.latestHandData = { landmarks, cursors, gestures };
+              const result    = handLandmarkerInstance.detectForVideo(video, nowMs);
+              const landmarks = result?.landmarks ?? [];
+              const cursors   = calculateCursors(landmarks, video);
+              const gestures  = calculateGestures(landmarks, result?.handedness);
 
-            const found = landmarks.length > 0;
-            setData(prev => {
-              if (prev.isDetecting === found) return prev;
-              return { ...prev, isDetecting: found };
-            });
+              window.latestHandData = { landmarks, cursors, gestures };
+
+              const found = landmarks.length > 0;
+              setData(prev => (prev.isDetecting === found ? prev : { ...prev, isDetecting: found }));
+            }
           }
         }
 
@@ -205,9 +194,7 @@ export const useMediaPipe = () => {
     }
   }, []);
 
-  useEffect(() => {
-    return () => stopMediaPipe();
-  }, [stopMediaPipe]);
+  useEffect(() => () => stopMediaPipe(), [stopMediaPipe]);
 
   return { ...data, initMediaPipe, stopMediaPipe };
 };
