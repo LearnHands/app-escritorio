@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  Palette, Music, Puzzle, Play, ArrowLeft, Trash2, Trophy, LogOut, BookOpen, Circle, Square, Globe, Gamepad2, Compass, Shield, Award, Lock
+  Palette, Music, Puzzle, Play, ArrowLeft, Trash2, Trophy, LogOut, BookOpen, Circle, Square, Globe, Gamepad2, Compass, Shield, Award, Lock, Orbit
 } from 'lucide-react';
 
 // Hooks
@@ -18,6 +18,7 @@ import BricksModule from './components/hub/modules/BricksModule';
 import SyllablesModule from './components/hub/modules/SyllablesModule';
 import EcoGuardianModule from './components/hub/modules/EcoGuardianModule';
 import MathAbacusModule from './components/hub/modules/MathAbacusModule';
+import SolarSystemModule from './components/hub/modules/SolarSystemModule';
 import HandButton from './components/hub/HandButton';
 
 import puceLogo from './assets/puce.png';
@@ -123,6 +124,7 @@ const SystemHub = ({ onExit }) => {
                 <MenuCard icon={<BookOpen />}   title="Sílabas"        color="purple"  locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('SILABAS'); }} />
                 <MenuCard icon={<Shield />}     title="Eco-Clasificador" color="emerald" locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('ECO'); }} />
                 <MenuCard icon={<Award />}      title="Ábaco"          color="orange"  locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('ABACUS'); }} />
+                <MenuCard icon={<span className="text-4xl">🪐</span>} title="Sistema Solar" color="cyan" locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('SOLAR_SYS'); }} />
               </div>
             </div>
           </motion.div>
@@ -140,7 +142,8 @@ const SystemHub = ({ onExit }) => {
               {currentGame === 'BRICKS'   && <BricksModule     addPoints={addPoints} />}
               {currentGame === 'SILABAS'  && <SyllablesModule  addPoints={addPoints} />}
               {currentGame === 'ECO'      && <EcoGuardianModule addPoints={addPoints} />}
-              {currentGame === 'ABACUS'   && <MathAbacusModule addPoints={addPoints} />}
+              {currentGame === 'ABACUS'   && <MathAbacusModule  addPoints={addPoints} />}
+              {currentGame === 'SOLAR_SYS' && <SolarSystemModule addPoints={addPoints} />}
             </div>
 
             {/* Game Footer Bar */}

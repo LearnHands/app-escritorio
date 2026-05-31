@@ -32,6 +32,7 @@ const MathAbacusModule = memo(({ addPoints }) => {
     particles:     [],
     streak:        0,
     wasPinching:   false,   // single-hand edge detection
+    pinchHandled:  true,    // true = this pinch gesture already processed an action
   });
 
   // ── Audio ──────────────────────────────────────────────────────────────────
@@ -145,11 +146,16 @@ const MathAbacusModule = memo(({ addPoints }) => {
         return nb;
       }).filter(b => b.y > -12);
 
-      // ── 3. Detección de pinza (edge — solo dispara al iniciar) ───────────
-      const startedPinch = isPinch && !s.wasPinching;
+      // ── 3. Detección de pinza ─────────────────────────────────────────────
+      // When pinch starts, mark as unhandled so we keep trying each frame
+      // until we find a bubble or the pinch is released. This compensates
+      // for the 30fps detection lag where the cursor position on the exact
+      // first pinch frame may be slightly off.
+      if (isPinch && !s.wasPinching) s.pinchHandled = false;  // new pinch
+      if (!isPinch)                   s.pinchHandled = true;   // released
       s.wasPinching = isPinch;
 
-      if (startedPinch && cursor?.isVisible) {
+      if (isPinch && !s.pinchHandled && cursor?.isVisible) {
         // Cursor está en píxeles de pantalla completa.
         // Burbujas están en % del área de juego → convertir a píxeles iguales.
         const cPx = cursor.x;
@@ -161,10 +167,11 @@ const MathAbacusModule = memo(({ addPoints }) => {
           const bPx = (b.x / 100) * sw;
           const bPy = (b.y / 100) * gameH; // burbuja en píxeles dentro del área de juego
           const dist = Math.hypot(cPx - bPx, cPy - bPy);
-          if (dist < 75 && dist < hitDist) { hit = b; hitDist = dist; } // 75px radio
+          if (dist < 100 && dist < hitDist) { hit = b; hitDist = dist; } // 100px radio
         });
 
         if (hit) {
+          s.pinchHandled = true; // don't re-fire for this same pinch gesture
           if (hit.isSelected) {
             // Deseleccionar
             hit.isSelected = false;

@@ -1,199 +1,326 @@
 import React, { useState, useEffect, useRef, useMemo, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Volume2, VolumeX } from 'lucide-react';
 
 const OCTAVES = 2;
 const WHITE_NOTES = ['Do', 'Re', 'Mi', 'Fa', 'Sol', 'La', 'Si'];
-const BLACK_NOTES = { 'Do': 'Do#', 'Re': 'Re#', 'Fa': 'Fa#', 'Sol': 'Sol#', 'La': 'La#' };
+const BLACK_NOTES  = { Do: 'Do#', Re: 'Re#', Fa: 'Fa#', Sol: 'Sol#', La: 'La#' };
 
 const FREQS = {
-  'Do': 261.6, 'Do#': 277.2, 'Re': 293.7, 'Re#': 311.1, 'Mi': 329.6, 'Fa': 349.2, 'Fa#': 370.0, 'Sol': 392.0, 'Sol#': 415.3, 'La': 440.0, 'La#': 466.2, 'Si': 493.9,
-  'Do2': 523.3, 'Do#2': 554.4, 'Re2': 587.3, 'Re#2': 622.3, 'Mi2': 659.3, 'Fa2': 698.5, 'Fa#2': 740.0, 'Sol2': 784.0, 'Sol#2': 830.6, 'La2': 880.0, 'La#2': 932.3, 'Si2': 987.8
+  'Do':   261.6, 'Do#': 277.2, 'Re':   293.7, 'Re#': 311.1,
+  'Mi':   329.6, 'Fa':  349.2, 'Fa#':  370.0, 'Sol': 392.0,
+  'Sol#': 415.3, 'La':  440.0, 'La#':  466.2, 'Si':  493.9,
+  'Do2':  523.3, 'Do#2':554.4, 'Re2':  587.3, 'Re#2':622.3,
+  'Mi2':  659.3, 'Fa2': 698.5, 'Fa#2': 740.0, 'Sol2':784.0,
+  'Sol#2':830.6, 'La2': 880.0, 'La#2': 932.3, 'Si2': 987.8,
 };
+
+// Fingertip landmark indices (thumb=4, index=8, middle=12, ring=16, pinky=20)
+const FINGERTIPS = [4, 8, 12, 16, 20];
 
 const PianoModule = memo(({ addPoints, videoRef }) => {
   const [activeNotes, setActiveNotes] = useState(new Set());
-  const audioCtx = useRef(null);
-  const oscillators = useRef({});
+  const [soundEnabled, setSoundEnabled] = useState(true);
+
+  const audioCtxRef     = useRef(null);
+  const activeOscsRef   = useRef({});   // { note → { osc, gainNode } }
+  const releasingRef    = useRef(new Set()); // notes in release phase
+  const keyRectsRef     = useRef([]);   // [{ note, rect, isBlack }]
+  const addPointsRef    = useRef(addPoints);
+  addPointsRef.current  = addPoints;
+  const soundEnabledRef = useRef(soundEnabled);
+  soundEnabledRef.current = soundEnabled;
 
   const whiteKeys = useMemo(() => {
     const keys = [];
-    for (let o = 0; o < OCTAVES; o++) {
+    for (let o = 0; o < OCTAVES; o++)
       WHITE_NOTES.forEach(n => keys.push(o === 0 ? n : n + '2'));
-    }
     return keys;
   }, []);
 
-  const playNote = (note) => {
-    if (!audioCtx.current) {
-      audioCtx.current = new (window.AudioContext || window.webkitAudioContext)();
-    }
-    
-    if (oscillators.current[note]) return;
-
-    const osc = audioCtx.current.createOscillator();
-    const gain = audioCtx.current.createGain();
-    
-    osc.connect(gain);
-    gain.connect(audioCtx.current.destination);
-    
-    osc.type = 'sine';
-    osc.frequency.value = FREQS[note] || 440;
-    
-    gain.gain.setValueAtTime(0.3, audioCtx.current.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.current.currentTime + 0.8);
-    
-    osc.start();
-    osc.stop(audioCtx.current.currentTime + 0.8);
-    
-    oscillators.current[note] = osc;
-    setActiveNotes(prev => new Set([...prev, note]));
-    addPoints(2);
-    
-    setTimeout(() => {
-      delete oscillators.current[note];
-      setActiveNotes(prev => {
-        const next = new Set(prev);
-        next.delete(note);
-        return next;
-      });
-    }, 400);
+  // ── Audio helpers ─────────────────────────────────────────────────────────
+  const getAudioCtx = () => {
+    if (!audioCtxRef.current)
+      audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtxRef.current.state === 'suspended') audioCtxRef.current.resume();
+    return audioCtxRef.current;
   };
 
-  const keyRects = useRef([]);
+  const startNote = (note) => {
+    if (!soundEnabledRef.current) return;
+    if (activeOscsRef.current[note] || releasingRef.current.has(note)) return;
 
-  // Cache rects on load/resize
+    try {
+      const ctx  = getAudioCtx();
+      const freq = FREQS[note] || 440;
+
+      // Oscillator 1 — fundamental (triangle for warmth)
+      const osc1 = ctx.createOscillator();
+      osc1.type  = 'triangle';
+      osc1.frequency.value = freq;
+
+      // Oscillator 2 — slight detuned copy (fuller sound)
+      const osc2 = ctx.createOscillator();
+      osc2.type  = 'sine';
+      osc2.frequency.value = freq * 2.001; // slight octave + detune
+
+      const gainNode = ctx.createGain();
+      osc1.connect(gainNode);
+      osc2.connect(gainNode);
+      gainNode.connect(ctx.destination);
+
+      // ADSR: fast attack → partial decay → sustain
+      const now = ctx.currentTime;
+      gainNode.gain.setValueAtTime(0, now);
+      gainNode.gain.linearRampToValueAtTime(0.22, now + 0.015);   // attack 15ms
+      gainNode.gain.linearRampToValueAtTime(0.16, now + 0.08);    // decay → sustain level
+
+      osc1.start(now);
+      osc2.start(now);
+
+      activeOscsRef.current[note] = { osc1, osc2, gainNode };
+      addPointsRef.current(1);
+    } catch (e) { console.warn('Piano start note failed', e); }
+  };
+
+  const stopNote = (note) => {
+    const entry = activeOscsRef.current[note];
+    if (!entry) return;
+    if (releasingRef.current.has(note)) return;
+
+    releasingRef.current.add(note);
+    delete activeOscsRef.current[note];
+
+    try {
+      const ctx = getAudioCtx();
+      const { osc1, osc2, gainNode } = entry;
+      const now = ctx.currentTime;
+      gainNode.gain.setValueAtTime(gainNode.gain.value, now);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.25); // release 250ms
+      setTimeout(() => {
+        try { osc1.stop(); osc2.stop(); } catch (_) {}
+        releasingRef.current.delete(note);
+      }, 280);
+    } catch (_) {}
+  };
+
+  // ── Cache key rects after layout ─────────────────────────────────────────
   useEffect(() => {
     const updateRects = () => {
-      const black = Array.from(document.querySelectorAll('.black-key')).map(el => ({
-        note: el.dataset.note,
-        rect: el.getBoundingClientRect(),
-        isBlack: true
+      const blacks = Array.from(document.querySelectorAll('.piano-black-key')).map(el => ({
+        note: el.dataset.note, rect: el.getBoundingClientRect(), isBlack: true,
       }));
-      const white = Array.from(document.querySelectorAll('.white-key')).map(el => ({
-        note: el.dataset.note,
-        rect: el.getBoundingClientRect(),
-        isBlack: false
+      const whites = Array.from(document.querySelectorAll('.piano-white-key')).map(el => ({
+        note: el.dataset.note, rect: el.getBoundingClientRect(), isBlack: false,
       }));
-      keyRects.current = [...black, ...white];
+      keyRectsRef.current = [...blacks, ...whites];
     };
-    
-    const timer = setTimeout(updateRects, 600);
+    const t = setTimeout(updateRects, 600);
     window.addEventListener('resize', updateRects);
-    return () => {
-      clearTimeout(timer);
-      window.removeEventListener('resize', updateRects);
-    };
+    return () => { clearTimeout(t); window.removeEventListener('resize', updateRects); };
   }, []);
 
-  // Loop de colisión con landmarks (Decouplado de los renders de React)
+  // ── Main detection loop ───────────────────────────────────────────────────
+  // Strategy:
+  //   Each frame → compute which notes are CURRENTLY under a fingertip.
+  //   Start any note that wasn't active before, stop any that left.
+  //   This gives true sustained notes: as long as the finger stays on the key,
+  //   the note keeps playing.
   useEffect(() => {
     let animId;
+    const prevNotesRef = new Set(); // notes active last frame
 
-    const checkPianoCollisions = () => {
-      const data = window.latestHandData || { gestures: [] };
+    const loop = () => {
+      const data     = window.latestHandData || {};
       const gestures = data.gestures || [];
+      const rects    = keyRectsRef.current;
 
-      if (gestures.length > 0 && keyRects.current.length > 0) {
+      if (rects.length > 0 && gestures.length > 0) {
         const videoEl = videoRef?.current;
-        const vw = videoEl?.videoWidth || 1280;
+        const vw = videoEl?.videoWidth  || 1280;
         const vh = videoEl?.videoHeight || 720;
+        const sw = window.innerWidth;
+        const sh = window.innerHeight;
 
-        const screenW = window.innerWidth;
-        const screenH = window.innerHeight;
-
-        const scale = Math.max(screenW / vw, screenH / vh);
+        const scale   = Math.max(sw / vw, sh / vh);
         const scaledW = vw * scale;
         const scaledH = vh * scale;
+        const offX    = (scaledW - sw) / 2;
+        const offY    = (scaledH - sh) / 2;
 
-        const offsetX = (scaledW - screenW) / 2;
-        const offsetY = (scaledH - screenH) / 2;
+        const frameNotes = new Set();
 
-        gestures.forEach((handGestures) => {
-          const allPoints = handGestures.landmarks || [];
+        gestures.forEach(gesture => {
+          const landmarks = gesture.landmarks || [];
+          if (!landmarks.length) return;
 
-          allPoints.forEach(point => {
-            if (!point) return;
-            
-            const normX = 1 - point.x;
-            const normY = point.y;
+          // Only check the 5 fingertip landmarks (not all 21 hand points)
+          FINGERTIPS.forEach(tipIdx => {
+            const lm = landmarks[tipIdx];
+            if (!lm) return;
 
-            const x = normX * scaledW - offsetX;
-            const y = normY * scaledH - offsetY;
+            // Mirror X (video is CSS-mirrored) and map to screen pixels
+            const px = (1 - lm.x) * scaledW - offX;
+            const py = lm.y * scaledH - offY;
 
-            // Comparar contra los rects cacheados de las teclas
-            for (const item of keyRects.current) {
-              const r = item.rect;
-              if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
-                playNote(item.note);
-                if (item.isBlack) break;
+            // Hit-test: black keys first (they sit on top of white keys)
+            let hit = false;
+            for (const key of rects) {
+              if (!key.isBlack) continue;
+              const r = key.rect;
+              if (px >= r.left && px <= r.right && py >= r.top && py <= r.bottom) {
+                frameNotes.add(key.note);
+                hit = true;
+                break;
+              }
+            }
+            if (hit) return;
+            for (const key of rects) {
+              if (key.isBlack) continue;
+              const r = key.rect;
+              if (px >= r.left && px <= r.right && py >= r.top && py <= r.bottom) {
+                frameNotes.add(key.note);
+                break;
               }
             }
           });
         });
+
+        // Start new notes (entered this frame)
+        for (const note of frameNotes) {
+          if (!prevNotesRef.has(note)) startNote(note);
+        }
+
+        // Stop released notes (left this frame)
+        for (const note of prevNotesRef) {
+          if (!frameNotes.has(note)) stopNote(note);
+        }
+
+        // Sync React state for visual highlights (only if changed)
+        const changed =
+          frameNotes.size !== prevNotesRef.size ||
+          [...frameNotes].some(n => !prevNotesRef.has(n));
+        if (changed) setActiveNotes(new Set(frameNotes));
+
+        // Update prev
+        prevNotesRef.clear();
+        frameNotes.forEach(n => prevNotesRef.add(n));
+
+      } else if (prevNotesRef.size > 0) {
+        // All fingers left — stop all
+        prevNotesRef.forEach(n => stopNote(n));
+        prevNotesRef.clear();
+        setActiveNotes(new Set());
       }
 
-      animId = requestAnimationFrame(checkPianoCollisions);
+      animId = requestAnimationFrame(loop);
     };
 
-    animId = requestAnimationFrame(checkPianoCollisions);
-    return () => cancelAnimationFrame(animId);
+    animId = requestAnimationFrame(loop);
+    return () => {
+      cancelAnimationFrame(animId);
+      // Stop all notes on unmount
+      Object.keys(activeOscsRef.current).forEach(n => stopNote(n));
+    };
   }, [videoRef]);
 
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="w-full h-full flex flex-col select-none">
-      {/* Piano Keys (Top) */}
-      <div className="w-full h-[35vh] bg-black/60 p-2 border-b border-white/10 backdrop-blur-xl relative flex">
-        {whiteKeys.map((n, i) => (
-          <div key={n} className="flex-1 relative flex">
-            {/* White Key */}
-            <div 
-              data-note={n}
-              className={`white-key flex-1 rounded-b-[20px] border border-black/20 transition-all duration-200 flex items-end justify-center pb-8 ${
-                activeNotes.has(n) 
-                ? 'bg-gradient-to-t from-cyan-500 to-cyan-300 shadow-[0_0_40px_rgba(6,182,212,0.6)] h-full z-10' 
-                : 'bg-white h-[95%]'
-              }`}
-            >
-              <div className="text-[10px] font-black uppercase text-black/40">{n}</div>
-            </div>
 
-            {/* Black Key */}
-            {BLACK_NOTES[n.replace('2', '')] && (
-              <div 
-                data-note={n.includes('2') ? BLACK_NOTES[n.replace('2', '')] + '2' : BLACK_NOTES[n]}
-                className={`black-key absolute right-[-25%] top-0 w-1/2 h-[60%] rounded-b-xl border border-white/10 transition-all duration-200 z-20 ${
-                  activeNotes.has(n.includes('2') ? BLACK_NOTES[n.replace('2', '')] + '2' : BLACK_NOTES[n])
-                  ? 'bg-gradient-to-t from-purple-500 to-purple-400 shadow-[0_0_40px_rgba(168,85,247,0.6)] h-[65%]'
-                  : 'bg-[#1a1a1a]'
+      {/* Sound toggle */}
+      <button
+        onClick={() => setSoundEnabled(p => !p)}
+        className="absolute top-4 right-12 z-50 p-3 glass rounded-2xl border border-white/10 text-white/40 hover:text-white transition-all"
+      >
+        {soundEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
+      </button>
+
+      {/* ── Piano keyboard (top portion) ─────────────────────────────── */}
+      <div className="w-full h-[38vh] bg-black/70 border-b border-white/10 backdrop-blur-xl relative flex p-3 gap-px">
+        {whiteKeys.map((n) => {
+          const blackNote = BLACK_NOTES[n.replace('2', '')]
+            ? (n.includes('2') ? BLACK_NOTES[n.replace('2', '')] + '2' : BLACK_NOTES[n])
+            : null;
+          const isActive    = activeNotes.has(n);
+          const blackActive = blackNote && activeNotes.has(blackNote);
+
+          return (
+            <div key={n} className="flex-1 relative">
+              {/* White key */}
+              <div
+                data-note={n}
+                className={`piano-white-key h-full rounded-b-2xl border border-black/30 flex items-end justify-center pb-4 transition-all duration-75 ${
+                  isActive
+                    ? 'bg-gradient-to-b from-cyan-400 to-cyan-300 shadow-[0_0_30px_rgba(6,182,212,0.7)]'
+                    : 'bg-gradient-to-b from-white to-gray-100 hover:from-gray-50'
                 }`}
-              />
-            )}
-          </div>
-        ))}
+              >
+                <span className={`text-[9px] font-black uppercase ${isActive ? 'text-cyan-800' : 'text-black/30'}`}>
+                  {n}
+                </span>
+              </div>
+
+              {/* Black key */}
+              {blackNote && (
+                <div
+                  data-note={blackNote}
+                  className={`piano-black-key absolute right-[-22%] top-0 w-[44%] h-[62%] z-20 rounded-b-xl border border-white/10 flex items-end justify-center pb-1 transition-all duration-75 ${
+                    blackActive
+                      ? 'bg-gradient-to-b from-purple-500 to-purple-400 shadow-[0_0_25px_rgba(168,85,247,0.8)]'
+                      : 'bg-gradient-to-b from-gray-900 to-gray-800'
+                  }`}
+                >
+                  <span className={`text-[7px] font-black ${blackActive ? 'text-white' : 'text-white/20'}`}>
+                    {blackNote.replace('2', '')}
+                  </span>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
-      {/* Visual Feedback Area (Bottom) */}
+      {/* ── Visual feedback area ────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col items-center justify-center relative overflow-hidden pointer-events-none">
-        <AnimatePresence>
-            {activeNotes.size > 0 ? (
-                <motion.div 
-                    initial={{ scale: 0.8, opacity: 0, y: 50 }}
-                    animate={{ scale: 1, opacity: 1, y: 0 }}
-                    exit={{ scale: 1.2, opacity: 0, y: -50 }}
-                    className="flex flex-wrap justify-center gap-12"
+        <AnimatePresence mode="popLayout">
+          {activeNotes.size > 0 ? (
+            <motion.div
+              key="notes"
+              initial={{ opacity: 0, y: 40 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -40 }}
+              className="flex flex-wrap justify-center gap-6 px-8"
+            >
+              {[...activeNotes].map(n => (
+                <motion.div
+                  key={n}
+                  initial={{ scale: 0.5 }}
+                  animate={{ scale: 1 }}
+                  exit={{ scale: 0.5 }}
+                  className="text-[80px] md:text-[100px] font-display font-black text-white italic tracking-tighter drop-shadow-[0_0_24px_rgba(6,182,212,0.8)]"
                 >
-                    {Array.from(activeNotes).map(n => (
-                        <div key={n} className="text-[140px] font-display font-black text-white italic tracking-tighter drop-shadow-[0_0_30px_rgba(6,182,212,0.8)]">
-                            {n}
-                        </div>
-                    ))}
+                  {n}
                 </motion.div>
-            ) : (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 0.4 }} className="text-center space-y-6">
-                    <div className="text-8xl animate-bounce-slow">🎹</div>
-                    <div className="text-3xl font-display font-black text-white/40 italic tracking-[0.2em] uppercase">Usa tu mano para tocar</div>
-                </motion.div>
-            )}
+              ))}
+            </motion.div>
+          ) : (
+            <motion.div
+              key="idle"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.4 }}
+              exit={{ opacity: 0 }}
+              className="flex flex-col items-center gap-6"
+            >
+              <div className="text-7xl animate-bounce-slow">🎹</div>
+              <p className="text-2xl font-display font-black text-white/40 italic tracking-[0.2em] uppercase">
+                Acerca los dedos a las teclas
+              </p>
+              <p className="text-[10px] font-black text-white/25 uppercase tracking-[0.3em]">
+                Cada dedo toca una nota · mantén pulsado para sostenerla
+              </p>
+            </motion.div>
+          )}
         </AnimatePresence>
       </div>
     </div>
