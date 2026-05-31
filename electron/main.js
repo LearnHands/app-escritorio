@@ -9,7 +9,7 @@ function createWindow() {
     height: 800,
     minWidth: 1024,
     minHeight: 600,
-    title: 'EduMotion — Aprende con tus Manos',
+    title: 'LearnHands — Aprende con tus Manos',
     backgroundColor: '#0A0A1A',
     autoHideMenuBar: true,
     webPreferences: {
