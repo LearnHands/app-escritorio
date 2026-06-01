@@ -1,6 +1,6 @@
 {
   "name": "learnhands",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "LearnHands — Plataforma educativa de movimiento natural para Fe y Alegría Ecuador",
   "author": "Fe y Alegría Ecuador <info@feyalegria.edu.ec>",
   "type": "commonjs",
@@ -26,6 +26,7 @@
     "concurrently": "^8.2.0",
     "electron": "^28.0.0",
     "electron-builder": "^24.9.0",
+    "rollup-plugin-visualizer": "^7.0.1",
     "tailwindcss": "^4.0.0",
     "vite": "^6.0.0",
     "wait-on": "^7.2.0"
@@ -48,7 +49,9 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "installerLanguages": ["es_ES"],
+      "installerLanguages": [
+        "es_ES"
+      ],
       "language": "3082"
     }
   }
