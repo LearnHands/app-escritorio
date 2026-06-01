@@ -1,25 +1,29 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  Palette, Music, Puzzle, Play, ArrowLeft, Trash2, Trophy, LogOut, BookOpen, Circle, Square, Globe, Gamepad2, Compass, Shield, Award, Lock, Orbit
+  Palette, Music, Puzzle, Play, ArrowLeft, Trophy, LogOut, BookOpen,
+  Circle, Square, Gamepad2, Compass, Shield, Award, Lock,
 } from 'lucide-react';
 
 // Hooks
 import { useMediaPipe } from './hooks/useMediaPipe';
 
-// Components
+// Components — always needed
 import LayeredEngine from './components/hub/LayeredEngine';
-import PianoModule from './components/hub/modules/PianoModule';
-import DrawingModule from './components/hub/modules/DrawingModule';
-import PuzzleModule from './components/hub/modules/PuzzleModule';
-import ShapesModule from './components/hub/modules/ShapesModule';
-import SolarModule from './components/hub/modules/SolarModule';
-import BricksModule from './components/hub/modules/BricksModule';
-import SyllablesModule from './components/hub/modules/SyllablesModule';
-import EcoGuardianModule from './components/hub/modules/EcoGuardianModule';
-import MathAbacusModule from './components/hub/modules/MathAbacusModule';
-import SolarSystemModule from './components/hub/modules/SolarSystemModule';
-import HandButton from './components/hub/HandButton';
+import HandButton    from './components/hub/HandButton';
+
+// ── Game modules — lazy-loaded so each becomes its own JS chunk ───────────────
+// V8 only parses the active module's code; startup bundle stays small.
+const PianoModule       = lazy(() => import('./components/hub/modules/PianoModule'));
+const DrawingModule     = lazy(() => import('./components/hub/modules/DrawingModule'));
+const PuzzleModule      = lazy(() => import('./components/hub/modules/PuzzleModule'));
+const ShapesModule      = lazy(() => import('./components/hub/modules/ShapesModule'));
+const SolarModule       = lazy(() => import('./components/hub/modules/SolarModule'));
+const BricksModule      = lazy(() => import('./components/hub/modules/BricksModule'));
+const SyllablesModule   = lazy(() => import('./components/hub/modules/SyllablesModule'));
+const EcoGuardianModule = lazy(() => import('./components/hub/modules/EcoGuardianModule'));
+const MathAbacusModule  = lazy(() => import('./components/hub/modules/MathAbacusModule'));
+const SolarSystemModule = lazy(() => import('./components/hub/modules/SolarSystemModule'));
 
 import puceLogo from './assets/puce.png';
 
@@ -132,18 +136,27 @@ const SystemHub = ({ onExit }) => {
 
         {view === 'GAME' && (
           <motion.div key="game" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex-1 flex flex-col">
-            {/* Game Content */}
+            {/* Game Content — Suspense shows a spinner while the lazy chunk loads */}
             <div className="flex-1 relative">
-              {currentGame === 'PIZARRA'  && <DrawingModule    addPoints={addPoints} />}
-              {currentGame === 'PIANO'    && <PianoModule      addPoints={addPoints} videoRef={videoRef} />}
-              {currentGame === 'PUZZLE'   && <PuzzleModule     addPoints={addPoints} />}
-              {currentGame === 'COLORES'  && <ShapesModule     addPoints={addPoints} />}
-              {currentGame === 'SOLAR'    && <SolarModule      addPoints={addPoints} />}
-              {currentGame === 'BRICKS'   && <BricksModule     addPoints={addPoints} />}
-              {currentGame === 'SILABAS'  && <SyllablesModule  addPoints={addPoints} />}
-              {currentGame === 'ECO'      && <EcoGuardianModule addPoints={addPoints} />}
-              {currentGame === 'ABACUS'   && <MathAbacusModule  addPoints={addPoints} />}
-              {currentGame === 'SOLAR_SYS' && <SolarSystemModule addPoints={addPoints} />}
+              <Suspense fallback={
+                <div className="w-full h-full flex items-center justify-center">
+                  <div className="flex flex-col items-center gap-4">
+                    <div className="w-12 h-12 rounded-full border-2 border-purple-500/40 border-t-purple-400 animate-spin" />
+                    <span className="text-[10px] font-black uppercase tracking-[0.3em] text-white/30">Cargando módulo…</span>
+                  </div>
+                </div>
+              }>
+                {currentGame === 'PIZARRA'   && <DrawingModule     addPoints={addPoints} />}
+                {currentGame === 'PIANO'     && <PianoModule       addPoints={addPoints} videoRef={videoRef} />}
+                {currentGame === 'PUZZLE'    && <PuzzleModule      addPoints={addPoints} />}
+                {currentGame === 'COLORES'   && <ShapesModule      addPoints={addPoints} />}
+                {currentGame === 'SOLAR'     && <SolarModule       addPoints={addPoints} />}
+                {currentGame === 'BRICKS'    && <BricksModule      addPoints={addPoints} />}
+                {currentGame === 'SILABAS'   && <SyllablesModule   addPoints={addPoints} />}
+                {currentGame === 'ECO'       && <EcoGuardianModule addPoints={addPoints} />}
+                {currentGame === 'ABACUS'    && <MathAbacusModule  addPoints={addPoints} />}
+                {currentGame === 'SOLAR_SYS' && <SolarSystemModule addPoints={addPoints} />}
+              </Suspense>
             </div>
 
             {/* Game Footer Bar */}
