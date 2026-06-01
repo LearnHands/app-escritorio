@@ -96,6 +96,7 @@ const SolarSystemModule = memo(({ addPoints }) => {
     viewX:0, viewY:0, viewScale:1,
     targetX:0, targetY:0, targetScale:1,
     selectedPlanet: null,
+    cardOpenTime: 0,   // timestamp when card opened (blocks inputs during fly-in + carry-over pinch)
     infoPage: 0,
     // Role-based gesture assignment (index of hand slot that owns each role, -1 = none)
     // Role is claimed at pinch-start and released when that pinch ends.
@@ -370,6 +371,21 @@ const SolarSystemModule = memo(({ addPoints }) => {
             if(s.movementHand===i) s.movementHand=-1;
             if(s.interactHand===i)  s.interactHand=-1;
 
+            // Block inputs for 550ms after card opens:
+            // 1) The card fly-in animation needs to finish so getBoundingClientRect is stable
+            // 2) The carry-over pinch from planet-selection must be released first
+            const cardAge=performance.now()-s.cardOpenTime;
+            if(cardAge < 550){
+              // Still in grace period — just track cursor, no interaction
+              s.wasPinching[i]=isPinching;
+              s.prevCursorX[i]=cPx; s.prevCursorY[i]=cPy;
+              // Draw a "waiting" cursor
+              ctx.beginPath(); ctx.arc(cPx,cPy,13,0,Math.PI*2);
+              ctx.strokeStyle='rgba(255,255,255,0.20)'; ctx.lineWidth=1.5;
+              ctx.setLineDash([2,6]); ctx.stroke(); ctx.setLineDash([]);
+              continue;
+            }
+
             if(isPinching&&!s.wasPinching[i]){
               s.pinchHandled[i]=false;
               if(cardEl&&!hitEl(cPx,cPy,cardEl,0)){
@@ -382,18 +398,19 @@ const SolarSystemModule = memo(({ addPoints }) => {
             }
 
             if(isPinching&&!s.pinchHandled[i]&&s.pinchMode[i]==='card'){
+              // Large margin (32px) compensates for 30fps detection lag and finger position offset
               const prevBtn=document.getElementById('solar-prev-btn');
               const nextBtn=document.getElementById('solar-next-btn');
-              if(prevBtn&&hitEl(cPx,cPy,prevBtn)){
+              if(prevBtn&&hitEl(cPx,cPy,prevBtn,32)){
                 s.pinchHandled[i]=true; goInfoPage(-1);
-              } else if(nextBtn&&hitEl(cPx,cPy,nextBtn)){
+              } else if(nextBtn&&hitEl(cPx,cPy,nextBtn,32)){
                 s.pinchHandled[i]=true; goInfoPage(1);
               } else {
                 const planet=PLANETS.find(p=>p.name===s.selectedPlanet);
                 if(planet){
                   for(let di=0;di<planet.pages.length;di++){
                     const dot=document.getElementById(`solar-dot-${di}`);
-                    if(dot&&hitEl(cPx,cPy,dot)){s.pinchHandled[i]=true;setInfoPageFn(di);break;}
+                    if(dot&&hitEl(cPx,cPy,dot,24)){s.pinchHandled[i]=true;setInfoPageFn(di);break;}
                   }
                 }
               }
@@ -466,6 +483,7 @@ const SolarSystemModule = memo(({ addPoints }) => {
                 const isNew=!s.visited.has(hover);
                 if(isNew){s.visited.add(hover);addPointsRef.current(80);setVisited(new Set(s.visited));}
                 s.selectedPlanet=hover; s.infoPage=0; s.paused=true;
+                s.cardOpenTime=performance.now(); // block card inputs during fly-in + carry-over pinch
                 setPaused(true);
                 const pos=s.ssPositions.find(p=>p.name===hover);
                 if(pos){

@@ -45,6 +45,11 @@ const SystemHub = ({ onExit }) => {
     initMediaPipe(videoRef.current);
   }, [initMediaPipe]);
 
+  // Enable 2-hand detection only for the Solar System module
+  useEffect(() => {
+    window.activeHandCount = currentGame === 'SOLAR_SYS' ? 2 : 1;
+  }, [currentGame]);
+
   const level = useMemo(() => Math.floor(score / 100) + 1, [score]);
 
   const addPoints = (p) => {

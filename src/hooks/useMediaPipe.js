@@ -175,7 +175,13 @@ export const useMediaPipe = () => {
               const cursors   = calculateCursors(landmarks, video);
               const gestures  = calculateGestures(landmarks, result?.handedness);
 
-              window.latestHandData = { landmarks, cursors, gestures };
+              // Limit to activeHandCount so only Solar System gets 2-hand data
+              const maxH = window.activeHandCount ?? 1;
+              window.latestHandData = {
+                landmarks: landmarks.slice(0, maxH),
+                cursors:   cursors.slice(0, maxH),
+                gestures:  gestures.slice(0, maxH),
+              };
 
               const found = landmarks.length > 0;
               setData(prev => (prev.isDetecting === found ? prev : { ...prev, isDetecting: found }));
