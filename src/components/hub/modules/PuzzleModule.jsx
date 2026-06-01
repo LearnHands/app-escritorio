@@ -13,7 +13,21 @@ const computeTilePx = (gridSize) => {
   return (gridPx - GRID_GAP * (gridSize - 1)) / gridSize;
 };
 
-const gridSizeForLevel = (lvl) => (lvl >= 2 ? 3 : 2);
+const gridSizeForLevel = (lvl) => (lvl >= 3 ? 4 : lvl >= 2 ? 3 : 2);
+
+// ── User-supplied images from src/assets/puzzle/ ─────────────────────────────
+// Drop any PNG/JPG/WEBP into that folder; Vite picks them up at build time.
+// Recommended: square images, 400 × 400 px or larger.
+const _userImgModules = import.meta.glob(
+  '../../../assets/puzzle/*.{png,jpg,jpeg,webp}',
+  { eager: true, query: '?url', import: 'default' }
+);
+
+const _userImages = Object.entries(_userImgModules).map(([path, url]) => {
+  // Use filename (without extension) as label
+  const name = path.split('/').pop().replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
+  return { url, label: `🖼️ ${name}` };
+});
 
 // ── Generate puzzle images locally with Canvas — zero network dependency ────────
 // Each image is a 400×400 canvas drawing encoded as a PNG data URI.
@@ -229,6 +243,9 @@ function buildPuzzleImages() {
     }, '🚀 Espacio'),
   ].filter(Boolean);
 
+  // Merge: user images first (they appear before the canvas drawings)
+  _puzzleImages = [..._userImages, ..._puzzleImages];
+
   return _puzzleImages;
 }
 
@@ -419,7 +436,7 @@ const PuzzleModule = memo(({ addPoints }) => {
 
   const handleNextPuzzle = useCallback(() => {
     const s = stateRef.current;
-    startPuzzle(Math.min(s.level + 1, 2), (s.imageIdx + 1) % Math.max(images.length, 1));
+    startPuzzle(Math.min(s.level + 1, 3), (s.imageIdx + 1) % Math.max(images.length, 1));
   }, [startPuzzle, images.length]);
 
   const handleReset = useCallback(() => {
@@ -561,11 +578,13 @@ const PuzzleModule = memo(({ addPoints }) => {
               ¡Lo lograste!
             </h2>
             <p className="text-white/50 font-black uppercase tracking-[0.3em] text-[10px] mb-8">
-              {level < 2 ? 'Siguiente nivel: cuadrícula 3×3' : '¡Maestro del puzzle!'}
+              {level < 2 ? 'Siguiente nivel: cuadrícula 3×3'
+               : level < 3 ? 'Siguiente nivel: cuadrícula 4×4'
+               : '¡Maestro del puzzle!'}
             </p>
             <HandButton onClick={handleNextPuzzle} className="px-12 py-5 text-sm" variant="purple" dwellMs={800}>
               <Star size={16} fill="white" />
-              {level < 2 ? 'Subir nivel' : 'Otro puzzle'}
+              {level < 3 ? 'Subir nivel' : 'Otro puzzle'}
             </HandButton>
           </motion.div>
         )}

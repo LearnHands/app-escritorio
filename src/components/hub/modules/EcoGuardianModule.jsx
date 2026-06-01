@@ -411,14 +411,14 @@ const EcoGuardianModule = memo(({ addPoints }) => {
             <motion.div
               animate={{ scale: item.isGrabbed ? 1.2 : 1.0, rotate: item.isGrabbed ? [0, -5, 5, 0] : 0 }}
               transition={item.isGrabbed ? { repeat: Infinity, duration: 0.5 } : {}}
-              className={`w-16 h-16 rounded-[22px] border-2 flex flex-col items-center justify-center shadow-2xl transition-all duration-200 bg-black/50 ${
+              className={`w-24 h-24 rounded-[28px] border-2 flex flex-col items-center justify-center shadow-2xl transition-all duration-200 bg-black/50 ${
                 item.isGrabbed
-                  ? 'border-white bg-white/10 shadow-[0_0_30px_rgba(255,255,255,0.4)] ring-4 ring-white/15'
-                  : 'border-white/10 text-white'
+                  ? 'border-white bg-white/10 shadow-[0_0_40px_rgba(255,255,255,0.5)] ring-4 ring-white/20'
+                  : 'border-white/15 text-white'
               }`}
             >
-              <span className="text-3xl">{item.symbol}</span>
-              <span className="text-[7px] font-black uppercase tracking-wider text-white/50 leading-none mt-1">
+              <span className="text-5xl leading-none">{item.symbol}</span>
+              <span className="text-[8px] font-black uppercase tracking-wider text-white/50 leading-none mt-1.5">
                 {item.name}
               </span>
             </motion.div>
@@ -426,34 +426,31 @@ const EcoGuardianModule = memo(({ addPoints }) => {
         ))}
       </div>
 
-      {/* Recycling bins — IDs used for getBoundingClientRect hit-testing */}
-      <div className="absolute bottom-[20%] left-0 right-0 z-10 px-6 flex justify-around items-end">
+      {/* Recycling bins — pinned to the bottom of the screen */}
+      <div className="absolute bottom-0 left-0 right-0 z-10 px-4 pb-2 flex justify-around items-end">
         {BINS.map(bin => (
-          <div key={bin.id} className="flex flex-col items-center gap-3 w-[26%]">
-            <motion.div
-              id={`eco-bin-${bin.id}`}
-              whileHover={{ scale: 1.02 }}
-              className="w-full h-32 rounded-[32px] border-4 border-dashed flex flex-col items-center justify-center gap-2 transition-all duration-300 relative overflow-hidden bg-black/60"
-              style={{ borderColor: bin.color, boxShadow: `0 0 25px ${bin.glow}` }}
-            >
-              <div
-                className="absolute inset-x-0 bottom-0 h-1/2 opacity-25"
-                style={{ background: `linear-gradient(to top, ${bin.color}, transparent)` }}
-              />
-              <span className="text-4xl filter drop-shadow-[0_4px_10px_rgba(0,0,0,0.5)]">
-                {bin.id === 'ORGANIC' ? '🥬' : bin.id === 'RECYCLABLE' ? '🍾' : '⚠️'}
-              </span>
-              <span
-                className="text-xs md:text-sm font-display font-black italic uppercase tracking-wider z-10"
-                style={{ color: bin.color }}
-              >
-                {bin.name}
-              </span>
-            </motion.div>
-            <span className="text-[9px] font-black text-white/40 uppercase tracking-widest italic">
-              Depósito {bin.label}
+          <motion.div
+            key={bin.id}
+            id={`eco-bin-${bin.id}`}
+            whileHover={{ scale: 1.02 }}
+            className="w-[30%] h-36 rounded-t-[32px] border-4 border-b-0 border-dashed flex flex-col items-center justify-center gap-2 transition-all duration-300 relative overflow-hidden bg-black/70"
+            style={{ borderColor: bin.color, boxShadow: `0 0 30px ${bin.glow}` }}
+          >
+            <div
+              className="absolute inset-x-0 bottom-0 h-2/3 opacity-30"
+              style={{ background: `linear-gradient(to top, ${bin.color}, transparent)` }}
+            />
+            <span className="text-5xl filter drop-shadow-[0_4px_12px_rgba(0,0,0,0.6)] z-10">
+              {bin.id === 'ORGANIC' ? '🥬' : bin.id === 'RECYCLABLE' ? '🍾' : '⚠️'}
             </span>
-          </div>
+            <span
+              className="text-sm font-display font-black italic uppercase tracking-wider z-10"
+              style={{ color: bin.color }}
+            >
+              {bin.name}
+            </span>
+            <span className="text-[8px] font-black text-white/30 uppercase tracking-widest z-10">{bin.label}</span>
+          </motion.div>
         ))}
       </div>
 
@@ -497,10 +494,10 @@ const EcoGuardianModule = memo(({ addPoints }) => {
       </AnimatePresence>
 
       {gameState === 'PLAYING' && (
-        <div className="absolute bottom-6 flex items-center gap-6 glass px-8 py-3.5 rounded-[24px] border border-white/10 animate-pulse z-30">
-          <span className="text-2xl">🤏</span>
+        <div className="absolute bottom-[152px] left-1/2 -translate-x-1/2 flex items-center gap-4 glass px-6 py-2.5 rounded-[20px] border border-white/10 animate-pulse z-30 whitespace-nowrap">
+          <span className="text-xl">🤏</span>
           <p className="text-[9px] font-black uppercase tracking-[0.2em] text-white/50 italic">
-            Pellizca la basura y llévala al tacho correcto — ¡suéltala o acércala al borde!
+            Pellizca la basura · llévala al tacho correcto
           </p>
         </div>
       )}
