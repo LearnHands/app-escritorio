@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'rea
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   Palette, Music, Puzzle, Play, ArrowLeft, Trophy, LogOut, BookOpen,
-  Circle, Square, Gamepad2, Compass, Shield, Award, Lock,
+  Gamepad2, Compass, Shield, Award, Lock,
 } from 'lucide-react';
 
 // Hooks
@@ -17,7 +17,6 @@ import HandButton    from './components/hub/HandButton';
 const PianoModule       = lazy(() => import('./components/hub/modules/PianoModule'));
 const DrawingModule     = lazy(() => import('./components/hub/modules/DrawingModule'));
 const PuzzleModule      = lazy(() => import('./components/hub/modules/PuzzleModule'));
-const ShapesModule      = lazy(() => import('./components/hub/modules/ShapesModule'));
 const SolarModule       = lazy(() => import('./components/hub/modules/SolarModule'));
 const BricksModule      = lazy(() => import('./components/hub/modules/BricksModule'));
 const SyllablesModule   = lazy(() => import('./components/hub/modules/SyllablesModule'));
@@ -127,7 +126,6 @@ const SystemHub = ({ onExit }) => {
                 <MenuCard icon={<Palette />}    title="Pizarra"        color="purple"  locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('PIZARRA'); }} />
                 <MenuCard icon={<Music />}      title="Piano"          color="cyan"    locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('PIANO'); }} />
                 <MenuCard icon={<Puzzle />}     title="Puzzle"         color="orange"  locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('PUZZLE'); }} />
-                <MenuCard icon={<div className="flex gap-1 items-end"><Circle size={40} className="text-white"/><Square size={30} className="text-white/40"/></div>} title="Colores" color="emerald" locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('COLORES'); }} />
                 <MenuCard icon={<Compass />}    title="Constelación"   color="cyan"    locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('SOLAR'); }} />
                 <MenuCard icon={<Gamepad2 />}   title="Balls Crush"    color="orange"  locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('BRICKS'); }} />
                 <MenuCard icon={<BookOpen />}   title="Sílabas"        color="purple"  locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('SILABAS'); }} />
@@ -154,7 +152,6 @@ const SystemHub = ({ onExit }) => {
                 {currentGame === 'PIZARRA'   && <DrawingModule     addPoints={addPoints} />}
                 {currentGame === 'PIANO'     && <PianoModule       addPoints={addPoints} videoRef={videoRef} />}
                 {currentGame === 'PUZZLE'    && <PuzzleModule      addPoints={addPoints} />}
-                {currentGame === 'COLORES'   && <ShapesModule      addPoints={addPoints} />}
                 {currentGame === 'SOLAR'     && <SolarModule       addPoints={addPoints} />}
                 {currentGame === 'BRICKS'    && <BricksModule      addPoints={addPoints} />}
                 {currentGame === 'SILABAS'   && <SyllablesModule   addPoints={addPoints} />}
