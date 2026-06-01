@@ -4,71 +4,269 @@ import { RefreshCw, CheckCircle, Star } from 'lucide-react';
 import HandButton from '../HandButton';
 
 const FOOTER_H = 64;
+const GRID_VW   = 44;   // CSS width of the target grid as % of viewport
+const GRID_GAP  = 8;    // px gap between grid cells
 
-// Kid-friendly images — Unsplash stable IDs
-// w=800&h=800&fit=crop forces a square crop so tiles align perfectly
-const IMAGES = [
-  { url: 'https://images.unsplash.com/photo-1561948955-570b270e7c36?w=800&h=800&fit=crop&q=80', label: '🐱 Gato',    emoji: '🐱' },
-  { url: 'https://images.unsplash.com/photo-1587300003388-59208cc962cb?w=800&h=800&fit=crop&q=80', label: '🐶 Perro',   emoji: '🐶' },
-  { url: 'https://images.unsplash.com/photo-1564349683136-77e08dba1ef3?w=800&h=800&fit=crop&q=80', label: '🐼 Panda',   emoji: '🐼' },
-  { url: 'https://images.unsplash.com/photo-1474511320723-9a56873867b5?w=800&h=800&fit=crop&q=80', label: '🦊 Zorro',   emoji: '🦊' },
-  { url: 'https://images.unsplash.com/photo-1490750967868-88df5691cc1e?w=800&h=800&fit=crop&q=80', label: '🌸 Flores',  emoji: '🌸' },
-  { url: 'https://images.unsplash.com/photo-1462331940025-496dfbfc7564?w=800&h=800&fit=crop&q=80', label: '🌌 Espacio', emoji: '🌌' },
-];
-
-// Grid width (must match CSS width: GRID_VW vw)
-const GRID_VW  = 44;
-const GRID_GAP = 8; // px between grid cells
-
-const gridSizeForLevel = (lvl) => (lvl >= 2 ? 3 : 2);
-
-/** Pixel size of each tile given the current viewport */
+// ── Tile pixel size for the current viewport + grid ────────────────────────────
 const computeTilePx = (gridSize) => {
   const gridPx = window.innerWidth * GRID_VW / 100;
   return (gridPx - GRID_GAP * (gridSize - 1)) / gridSize;
 };
 
-/** Scatter tiles in the lower portion of the game area — non-overlapping */
+const gridSizeForLevel = (lvl) => (lvl >= 2 ? 3 : 2);
+
+// ── Generate puzzle images locally with Canvas — zero network dependency ────────
+// Each image is a 400×400 canvas drawing encoded as a PNG data URI.
+// Runs once; result is module-level cached so re-renders don't redraw.
+let _puzzleImages = null;
+
+function buildPuzzleImages() {
+  if (_puzzleImages) return _puzzleImages;
+  if (typeof document === 'undefined') return [];
+
+  const S = 400; // canvas size
+  const make = (drawFn, label) => {
+    try {
+      const cv  = document.createElement('canvas');
+      cv.width  = cv.height = S;
+      const ctx = cv.getContext('2d');
+      drawFn(ctx, S);
+      return { url: cv.toDataURL('image/png'), label };
+    } catch { return null; }
+  };
+
+  _puzzleImages = [
+    // ① Sol ──────────────────────────────────────────────────────────────────
+    make((ctx, S) => {
+      const bg = ctx.createRadialGradient(S/2,S/2,0, S/2,S/2,S*0.72);
+      bg.addColorStop(0,'#FEF9C3'); bg.addColorStop(1,'#F97316');
+      ctx.fillStyle = bg; ctx.fillRect(0,0,S,S);
+      // Rays
+      ctx.save(); ctx.translate(S/2,S/2);
+      for (let i = 0; i < 12; i++) {
+        ctx.rotate(Math.PI/6);
+        ctx.fillStyle = 'rgba(255,220,80,0.45)';
+        ctx.beginPath();
+        ctx.moveTo(-10,-S*0.18); ctx.lineTo(10,-S*0.18); ctx.lineTo(0,-S*0.46);
+        ctx.closePath(); ctx.fill();
+      }
+      ctx.restore();
+      // Circle
+      ctx.beginPath(); ctx.arc(S/2,S/2,S*0.22,0,Math.PI*2);
+      ctx.fillStyle='#FCD34D'; ctx.fill();
+      ctx.strokeStyle='#FBBF24'; ctx.lineWidth=8; ctx.stroke();
+      // Eyes
+      ctx.fillStyle='#92400E';
+      [[S*0.43,S*0.46],[S*0.57,S*0.46]].forEach(([x,y])=>{
+        ctx.beginPath(); ctx.arc(x,y,S*0.025,0,Math.PI*2); ctx.fill();
+      });
+      // Smile
+      ctx.beginPath(); ctx.arc(S/2,S/2+S*0.04,S*0.09,0,Math.PI);
+      ctx.strokeStyle='#92400E'; ctx.lineWidth=5; ctx.stroke();
+    }, '☀️ Sol'),
+
+    // ② Océano ────────────────────────────────────────────────────────────────
+    make((ctx, S) => {
+      const sky = ctx.createLinearGradient(0,0,0,S*0.55);
+      sky.addColorStop(0,'#BAE6FD'); sky.addColorStop(1,'#38BDF8');
+      ctx.fillStyle = sky; ctx.fillRect(0,0,S,S*0.55);
+      // Sun in sky
+      ctx.beginPath(); ctx.arc(S*0.78,S*0.16,S*0.09,0,Math.PI*2);
+      ctx.fillStyle='#FEF08A'; ctx.fill();
+      // Sea
+      const sea = ctx.createLinearGradient(0,S*0.55,0,S);
+      sea.addColorStop(0,'#38BDF8'); sea.addColorStop(1,'#0C4A6E');
+      ctx.fillStyle = sea; ctx.fillRect(0,S*0.55,S,S*0.45);
+      // Waves
+      for (let w = 0; w < 4; w++) {
+        const yb = S*(0.57+w*0.11);
+        ctx.beginPath(); ctx.moveTo(0, yb);
+        for (let x = 0; x <= S; x += 40) {
+          ctx.quadraticCurveTo(x+20, yb-S*0.025, x+40, yb);
+        }
+        ctx.lineTo(S,S); ctx.lineTo(0,S); ctx.closePath();
+        ctx.fillStyle = `rgba(255,255,255,${0.10+w*0.06})`; ctx.fill();
+      }
+      // Cloud
+      ctx.fillStyle = 'rgba(255,255,255,0.88)';
+      [[S*0.26,S*0.2,S*0.07],[S*0.35,S*0.16,S*0.10],[S*0.46,S*0.2,S*0.07]].forEach(([x,y,r])=>{
+        ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
+      });
+    }, '🌊 Mar'),
+
+    // ③ Bosque ────────────────────────────────────────────────────────────────
+    make((ctx, S) => {
+      const bg = ctx.createLinearGradient(0,0,0,S);
+      bg.addColorStop(0,'#A7F3D0'); bg.addColorStop(1,'#065F46');
+      ctx.fillStyle = bg; ctx.fillRect(0,0,S,S);
+      // Sun
+      ctx.beginPath(); ctx.arc(S*0.82,S*0.14,S*0.08,0,Math.PI*2);
+      ctx.fillStyle='#FEF08A'; ctx.fill();
+      // Trees
+      const trees = [[S*0.12,S*0.78,S*0.24],[S*0.38,S*0.68,S*0.30],[S*0.65,S*0.74,S*0.26],[S*0.88,S*0.82,S*0.20]];
+      trees.forEach(([x,y,sz]) => {
+        // trunk
+        ctx.fillStyle='#7C2D12';
+        ctx.fillRect(x-sz*0.1,y, sz*0.2,sz*0.35);
+        // canopy layers
+        [[0,sz],[sz*0.18,sz*0.75],[sz*0.3,sz*0.55]].forEach(([off,w])=>{
+          ctx.fillStyle='#166534';
+          ctx.beginPath();
+          ctx.moveTo(x,y-sz+off); ctx.lineTo(x-w*0.5,y-sz*0.35+off); ctx.lineTo(x+w*0.5,y-sz*0.35+off);
+          ctx.closePath(); ctx.fill();
+        });
+      });
+      // Ground
+      ctx.fillStyle='#4ADE80'; ctx.fillRect(0,S*0.88,S,S*0.12);
+    }, '🌲 Bosque'),
+
+    // ④ Montaña ───────────────────────────────────────────────────────────────
+    make((ctx, S) => {
+      // Sky
+      const sky = ctx.createLinearGradient(0,0,0,S*0.65);
+      sky.addColorStop(0,'#C7D2FE'); sky.addColorStop(1,'#818CF8');
+      ctx.fillStyle = sky; ctx.fillRect(0,0,S,S*0.65);
+      // Ground
+      ctx.fillStyle='#86EFAC'; ctx.fillRect(0,S*0.65,S,S*0.35);
+      // Back mountain
+      ctx.fillStyle='#A78BFA';
+      ctx.beginPath(); ctx.moveTo(S*0.05,S*0.68); ctx.lineTo(S*0.52,S*0.10); ctx.lineTo(S*0.95,S*0.68); ctx.closePath(); ctx.fill();
+      // Snow back
+      ctx.fillStyle='rgba(255,255,255,0.85)';
+      ctx.beginPath(); ctx.moveTo(S*0.38,S*0.27); ctx.lineTo(S*0.52,S*0.10); ctx.lineTo(S*0.65,S*0.27); ctx.closePath(); ctx.fill();
+      // Front mountain
+      ctx.fillStyle='#7C3AED';
+      ctx.beginPath(); ctx.moveTo(S*0.15,S*0.78); ctx.lineTo(S*0.42,S*0.28); ctx.lineTo(S*0.70,S*0.78); ctx.closePath(); ctx.fill();
+      // Snow front
+      ctx.fillStyle='white';
+      ctx.beginPath(); ctx.moveTo(S*0.30,S*0.43); ctx.lineTo(S*0.42,S*0.28); ctx.lineTo(S*0.54,S*0.43); ctx.closePath(); ctx.fill();
+      // Stars
+      ctx.fillStyle='rgba(255,255,255,0.8)';
+      [[S*0.15,S*0.12],[S*0.72,S*0.08],[S*0.88,S*0.2]].forEach(([x,y])=>{
+        ctx.beginPath(); ctx.arc(x,y,S*0.015,0,Math.PI*2); ctx.fill();
+      });
+    }, '🏔️ Montaña'),
+
+    // ⑤ Flores ────────────────────────────────────────────────────────────────
+    make((ctx, S) => {
+      const bg = ctx.createLinearGradient(0,0,S,S);
+      bg.addColorStop(0,'#FDF2F8'); bg.addColorStop(1,'#FBCFE8');
+      ctx.fillStyle = bg; ctx.fillRect(0,0,S,S);
+      // Ground
+      ctx.fillStyle='#86EFAC'; ctx.fillRect(0,S*0.82,S,S*0.18);
+      // Flowers
+      const flowers = [
+        [S*0.18,S*0.52,'#F472B6'],
+        [S*0.50,S*0.40,'#A78BFA'],
+        [S*0.82,S*0.50,'#FB923C'],
+        [S*0.34,S*0.65,'#FCD34D'],
+        [S*0.66,S*0.63,'#34D399'],
+      ];
+      flowers.forEach(([fx,fy,color]) => {
+        // Stem
+        ctx.strokeStyle='#4ADE80'; ctx.lineWidth=5;
+        ctx.beginPath(); ctx.moveTo(fx,S*0.82); ctx.lineTo(fx,fy+S*0.06); ctx.stroke();
+        // Petals
+        for (let p = 0; p < 6; p++) {
+          const a = p * Math.PI/3;
+          const px = fx + Math.cos(a)*S*0.065;
+          const py = fy + Math.sin(a)*S*0.065;
+          ctx.beginPath(); ctx.ellipse(px,py,S*0.048,S*0.026,a,0,Math.PI*2);
+          ctx.fillStyle = color; ctx.fill();
+        }
+        // Centre
+        ctx.beginPath(); ctx.arc(fx,fy,S*0.038,0,Math.PI*2);
+        ctx.fillStyle='#FEF08A'; ctx.fill();
+      });
+    }, '🌸 Flores'),
+
+    // ⑥ Espacio ───────────────────────────────────────────────────────────────
+    make((ctx, S) => {
+      // Deep space background
+      const bg = ctx.createRadialGradient(S*0.4,S*0.4,0, S/2,S/2,S*0.8);
+      bg.addColorStop(0,'#1E1B4B'); bg.addColorStop(1,'#0F0A2E');
+      ctx.fillStyle = bg; ctx.fillRect(0,0,S,S);
+      // Stars — deterministic positions via golden-angle Fibonacci spiral
+      for (let i = 0; i < 70; i++) {
+        const angle  = i * 2.39996; // golden angle
+        const radius = Math.sqrt(i/70) * S * 0.5;
+        const x = S/2 + Math.cos(angle) * radius;
+        const y = S/2 + Math.sin(angle) * radius;
+        const r = 0.7 + (i%4) * 0.4;
+        ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2);
+        ctx.fillStyle = `rgba(255,255,255,${0.35+((i%3)/3)*0.55})`; ctx.fill();
+      }
+      // Planet
+      const pg = ctx.createRadialGradient(S*0.55,S*0.38,0, S*0.62,S*0.44,S*0.22);
+      pg.addColorStop(0,'#A5B4FC'); pg.addColorStop(0.5,'#6366F1'); pg.addColorStop(1,'#312E81');
+      ctx.beginPath(); ctx.arc(S*0.62,S*0.44,S*0.22,0,Math.PI*2);
+      ctx.fillStyle = pg; ctx.fill();
+      // Ring
+      ctx.save(); ctx.translate(S*0.62,S*0.44); ctx.scale(1,0.28);
+      ctx.beginPath(); ctx.arc(0,0,S*0.34,0,Math.PI*2);
+      ctx.strokeStyle='rgba(165,180,252,0.6)'; ctx.lineWidth=S*0.065; ctx.stroke();
+      ctx.restore();
+      // Rocket
+      ctx.fillStyle='#F9A8D4';
+      ctx.beginPath();
+      ctx.moveTo(S*0.20,S*0.80); ctx.lineTo(S*0.235,S*0.52); ctx.lineTo(S*0.27,S*0.80);
+      ctx.closePath(); ctx.fill();
+      // Nose cone
+      ctx.fillStyle='#EC4899';
+      ctx.beginPath();
+      ctx.moveTo(S*0.20,S*0.52); ctx.lineTo(S*0.235,S*0.40); ctx.lineTo(S*0.27,S*0.52);
+      ctx.closePath(); ctx.fill();
+      // Window
+      ctx.beginPath(); ctx.arc(S*0.235,S*0.63,S*0.025,0,Math.PI*2);
+      ctx.fillStyle='#BAE6FD'; ctx.fill();
+      // Flame
+      const flame = ctx.createLinearGradient(0,S*0.80,0,S*0.92);
+      flame.addColorStop(0,'#FB923C'); flame.addColorStop(1,'#FEF08A');
+      ctx.fillStyle = flame;
+      ctx.beginPath();
+      ctx.moveTo(S*0.21,S*0.80); ctx.lineTo(S*0.235,S*0.92); ctx.lineTo(S*0.26,S*0.80);
+      ctx.closePath(); ctx.fill();
+    }, '🚀 Espacio'),
+  ].filter(Boolean);
+
+  return _puzzleImages;
+}
+
+// ── Scatter tile initial positions ─────────────────────────────────────────────
 const initTiles = (gridSize) => {
-  const count   = gridSize * gridSize;
-  const sw      = window.innerWidth;
-  const gh      = window.innerHeight - FOOTER_H;
-  const tilePx  = computeTilePx(gridSize);
-  const half    = tilePx / 2;
-  const placed  = [];
-  const tiles   = [];
+  const count  = gridSize * gridSize;
+  const sw     = window.innerWidth;
+  const gh     = window.innerHeight - FOOTER_H;
+  const tilePx = computeTilePx(gridSize);
+  const half   = tilePx / 2;
+  const placed = [];
+  const tiles  = [];
 
   for (let i = 0; i < count; i++) {
     const row = Math.floor(i / gridSize);
     const col = i % gridSize;
-
     let x, y, attempts = 0;
     const yMin = gh * 0.60;
     const yMax = gh * 0.93 - half;
-
     do {
       x = half + 16 + Math.random() * (sw - tilePx - 32);
       y = yMin  + Math.random() * Math.max(0, yMax - yMin);
       attempts++;
-    } while (
-      attempts < 60 &&
-      placed.some(p => Math.hypot(p.x - x, p.y - y) < tilePx + 10)
-    );
-
+    } while (attempts < 60 && placed.some(p => Math.hypot(p.x - x, p.y - y) < tilePx + 10));
     placed.push({ x, y });
     tiles.push({ id: i, correctRow: row, correctCol: col, x, y });
   }
   return tiles;
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
 const PuzzleModule = memo(({ addPoints }) => {
-  const [level,    setLevel]    = useState(1);
-  const [imageIdx, setImageIdx] = useState(0);
-  const [isWon,    setIsWon]    = useState(false);
+  const [level,     setLevel]     = useState(1);
+  const [imageIdx,  setImageIdx]  = useState(0);
+  const [isWon,     setIsWon]     = useState(false);
   const [placedIds, setPlacedIds] = useState(new Set());
-  // 'loading' | 'ok' | 'error'
-  const [imgStatus, setImgStatus] = useState('loading');
+  // Images are generated locally — always available, never fail
+  const [images, setImages] = useState([]);
 
   const addPointsRef = useRef(addPoints);
   addPointsRef.current = addPoints;
@@ -82,39 +280,27 @@ const PuzzleModule = memo(({ addPoints }) => {
     imageIdx:  0,
   });
 
-  /** Direct DOM refs for each draggable tile — zero React overhead during drag */
-  const tileElsRef = useRef({});
+  const tileElsRef      = useRef({});   // { tileId → DOM element }
+  const slotCentersRef  = useRef([]);   // pixel centres of ghost slots
+  const gridRef         = useRef(null);
 
-  /** Pixel-space centre of each ghost slot (indexed by tile id = slot index) */
-  const slotCentersRef = useRef([]);
+  // ── Generate images once on mount ──────────────────────────────────────────
+  useEffect(() => { setImages(buildPuzzleImages()); }, []);
 
-  /** The CSS-grid container holding the ghost slots */
-  const gridRef = useRef(null);
-
-  // ── Compute slot pixel centres from the DOM ─────────────────────────────────
+  // ── Slot pixel centres ─────────────────────────────────────────────────────
   const updateSlotCenters = useCallback(() => {
     if (!gridRef.current) return;
-    const els = gridRef.current.querySelectorAll('[data-slot]');
-    slotCentersRef.current = Array.from(els).map(el => {
-      const r = el.getBoundingClientRect();
-      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-    });
+    slotCentersRef.current = Array.from(gridRef.current.querySelectorAll('[data-slot]'))
+      .map(el => {
+        const r = el.getBoundingClientRect();
+        return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+      });
   }, []);
 
-  // ── Image preloading ────────────────────────────────────────────────────────
-  useEffect(() => {
-    setImgStatus('loading');
-    const img = new window.Image();
-    img.onload  = () => setImgStatus('ok');
-    img.onerror = () => setImgStatus('error');
-    img.src = IMAGES[imageIdx].url;
-  }, [imageIdx]);
-
-  // ── Start / reset puzzle ────────────────────────────────────────────────────
+  // ── Start / reset ──────────────────────────────────────────────────────────
   const startPuzzle = useCallback((lvl, imgIdx) => {
-    const s = stateRef.current;
+    const s       = stateRef.current;
     const gridSize = gridSizeForLevel(lvl);
-
     s.level    = lvl;
     s.imageIdx = imgIdx;
     s.tiles    = initTiles(gridSize);
@@ -122,35 +308,26 @@ const PuzzleModule = memo(({ addPoints }) => {
     s.dragging  = {};
     s.isWon     = false;
     tileElsRef.current = {};
-
     setLevel(lvl);
     setImageIdx(imgIdx);
     setPlacedIds(new Set());
     setIsWon(false);
-
-    // Re-read slot positions after the DOM updates
     setTimeout(updateSlotCenters, 120);
   }, [updateSlotCenters]);
 
-  // Mount
   useEffect(() => { startPuzzle(1, 0); }, [startPuzzle]);
-
-  // Recompute slot centres when level changes (grid re-renders)
   useEffect(() => {
     const t = setTimeout(updateSlotCenters, 120);
     return () => clearTimeout(t);
   }, [level, updateSlotCenters]);
-
-  // Recompute on resize
   useEffect(() => {
     window.addEventListener('resize', updateSlotCenters);
     return () => window.removeEventListener('resize', updateSlotCenters);
   }, [updateSlotCenters]);
 
-  // ── Main RAF loop — direct DOM writes during drag ───────────────────────────
+  // ── RAF loop — direct DOM writes during drag ───────────────────────────────
   useEffect(() => {
     let animId;
-
     const loop = () => {
       animId = requestAnimationFrame(loop);
       const s = stateRef.current;
@@ -162,16 +339,13 @@ const PuzzleModule = memo(({ addPoints }) => {
 
       cursors.forEach((cursor, handIdx) => {
         if (!cursor?.isVisible) return;
-
-        // cursor.x / cursor.y are already in screen pixels
-        const cx = cursor.x;
-        const cy = cursor.y;
+        const cx = cursor.x, cy = cursor.y;
         const isPinching = !!gestures[handIdx]?.isPinching;
         const draggedId  = s.dragging[handIdx];
 
         if (isPinching) {
           if (draggedId === undefined) {
-            // ── GRAB: find nearest free unplaced tile ──────────────────────
+            // GRAB
             let best = null, bestDist = tilePx * 1.3;
             s.tiles.forEach(t => {
               if (s.placedIds.has(t.id)) return;
@@ -189,29 +363,28 @@ const PuzzleModule = memo(({ addPoints }) => {
               }
             }
           } else {
-            // ── DRAG: move the tile directly in the DOM ────────────────────
-            const tileIdx = s.tiles.findIndex(t => t.id === draggedId);
-            if (tileIdx !== -1) {
-              s.tiles[tileIdx].x = cx;
-              s.tiles[tileIdx].y = cy;
+            // DRAG
+            const idx = s.tiles.findIndex(t => t.id === draggedId);
+            if (idx !== -1) {
+              s.tiles[idx].x = cx;
+              s.tiles[idx].y = cy;
               const el = tileElsRef.current[draggedId];
               if (el) { el.style.left = `${cx}px`; el.style.top = `${cy}px`; }
             }
           }
         } else if (draggedId !== undefined) {
-          // ── RELEASE: try to snap to correct slot ──────────────────────────
-          const tileIdx = s.tiles.findIndex(t => t.id === draggedId);
-          if (tileIdx !== -1) {
-            const tile   = s.tiles[tileIdx];
+          // RELEASE
+          const idx  = s.tiles.findIndex(t => t.id === draggedId);
+          if (idx !== -1) {
+            const tile   = s.tiles[idx];
             const center = slotCentersRef.current[tile.id];
             const dist   = center ? Math.hypot(tile.x - center.x, tile.y - center.y) : Infinity;
             const snap   = tilePx * 0.65;
             const el     = tileElsRef.current[draggedId];
 
             if (dist < snap && center) {
-              // ── SNAPPED ──
-              s.tiles[tileIdx].x = center.x;
-              s.tiles[tileIdx].y = center.y;
+              s.tiles[idx].x = center.x;
+              s.tiles[idx].y = center.y;
               s.placedIds.add(draggedId);
               if (el) {
                 el.style.transition = 'left 0.12s ease, top 0.12s ease';
@@ -222,17 +395,15 @@ const PuzzleModule = memo(({ addPoints }) => {
               }
               addPointsRef.current(100);
               setPlacedIds(new Set(s.placedIds));
-
               if (s.placedIds.size === gridSize * gridSize) {
                 s.isWon = true;
                 addPointsRef.current(300 + s.level * 100);
                 setIsWon(true);
               }
             } else {
-              // Drop in current position
               if (el) {
-                el.style.zIndex    = '20';
-                el.style.boxShadow = '0 8px 32px rgba(0,0,0,0.4)';
+                el.style.zIndex     = '20';
+                el.style.boxShadow  = '0 8px 32px rgba(0,0,0,0.4)';
                 el.style.transition = '';
               }
             }
@@ -244,52 +415,50 @@ const PuzzleModule = memo(({ addPoints }) => {
 
     animId = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(animId);
-  }, []); // Stable — everything via refs
+  }, []);
 
-  // ── Handlers ────────────────────────────────────────────────────────────────
   const handleNextPuzzle = useCallback(() => {
     const s = stateRef.current;
-    startPuzzle(Math.min(s.level + 1, 2), (s.imageIdx + 1) % IMAGES.length);
-  }, [startPuzzle]);
+    startPuzzle(Math.min(s.level + 1, 2), (s.imageIdx + 1) % Math.max(images.length, 1));
+  }, [startPuzzle, images.length]);
 
   const handleReset = useCallback(() => {
     const s = stateRef.current;
-    startPuzzle(s.level, (s.imageIdx + 1) % IMAGES.length);
-  }, [startPuzzle]);
+    startPuzzle(s.level, (s.imageIdx + 1) % Math.max(images.length, 1));
+  }, [startPuzzle, images.length]);
 
-  // ── Derived render values ────────────────────────────────────────────────────
+  // ── Derived render values ──────────────────────────────────────────────────
   const gridSize = gridSizeForLevel(level);
   const tileCount = gridSize * gridSize;
-  const image     = IMAGES[imageIdx];
-  // Tile pixel size (computed at render — used for initial inline style on tile divs)
   const tilePx    = computeTilePx(gridSize);
+  const image     = images[imageIdx] || null;
 
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="w-full h-full relative overflow-hidden select-none">
 
-      {/* ── Header badge ───────────────────────────────────────────────────── */}
+      {/* Header */}
       <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 glass-dark px-5 py-2 rounded-2xl border border-white/10">
         <span className="text-[9px] font-black uppercase tracking-[0.3em] text-purple-400">Nivel {level}</span>
         <div className="w-px h-4 bg-white/20" />
-        <span className="text-[9px] font-black uppercase tracking-[0.2em] text-white/50">{image.label}</span>
+        <span className="text-[9px] font-black uppercase tracking-[0.2em] text-white/50">{image?.label ?? '…'}</span>
         <div className="w-px h-4 bg-white/20" />
         <span className="text-[9px] font-black uppercase tracking-[0.2em] text-white/30">{gridSize}×{gridSize}</span>
       </div>
 
-      {/* ── Ghost target grid (CSS Grid → browser handles layout, no math) ── */}
-      {/* z-index: 5 so dragged tiles (z:20/50) always appear above slots    */}
+      {/* Ghost target grid */}
       <div
         ref={gridRef}
         style={{
-          position:              'absolute',
-          width:                 `${GRID_VW}vw`,
-          left:                  '50%',
-          top:                   '7vh',
-          transform:             'translateX(-50%)',
-          display:               'grid',
-          gridTemplateColumns:   `repeat(${gridSize}, 1fr)`,
-          gap:                   `${GRID_GAP}px`,
-          zIndex:                5,
+          position:            'absolute',
+          width:               `${GRID_VW}vw`,
+          left:                '50%',
+          top:                 '7vh',
+          transform:           'translateX(-50%)',
+          display:             'grid',
+          gridTemplateColumns: `repeat(${gridSize}, 1fr)`,
+          gap:                 `${GRID_GAP}px`,
+          zIndex:              5,
         }}
       >
         {Array.from({ length: tileCount }, (_, i) => {
@@ -304,14 +473,14 @@ const PuzzleModule = memo(({ addPoints }) => {
                 placed ? 'border-green-500/60' : 'border-white/20'
               }`}
               style={{
-                position: 'relative',
+                position:    'relative',
                 aspectRatio: '1',
-                overflow: 'hidden',
-                background: placed ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.03)',
+                overflow:    'hidden',
+                background:  placed ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.03)',
               }}
             >
-              {/* Faint image hint — px positioning avoids % ambiguity */}
-              {imgStatus !== 'error' && (
+              {/* Faint hint — pixel positioning, same formula as the draggable tile */}
+              {image && (
                 <img
                   src={image.url}
                   alt=""
@@ -331,10 +500,7 @@ const PuzzleModule = memo(({ addPoints }) => {
               )}
               {placed && (
                 <div className="absolute inset-0 flex items-center justify-center z-10">
-                  <CheckCircle
-                    size={gridSize === 2 ? 30 : 20}
-                    className="text-green-400/80 drop-shadow"
-                  />
+                  <CheckCircle size={gridSize === 2 ? 30 : 20} className="text-green-400/80" />
                 </div>
               )}
             </div>
@@ -342,38 +508,35 @@ const PuzzleModule = memo(({ addPoints }) => {
         })}
       </div>
 
-      {/* ── Image loading indicator ─────────────────────────────────────────── */}
-      {imgStatus === 'loading' && (
-        <div className="absolute top-[32%] left-1/2 -translate-x-1/2 z-40 glass px-6 py-3 rounded-2xl border border-white/10 flex items-center gap-3">
+      {/* Spinner while canvas images are being generated */}
+      {images.length === 0 && (
+        <div className="absolute top-[34%] left-1/2 -translate-x-1/2 z-40 glass px-6 py-3 rounded-2xl border border-white/10 flex items-center gap-3">
           <div className="w-4 h-4 rounded-full border-2 border-purple-400 border-t-transparent animate-spin" />
-          <span className="text-[9px] font-black uppercase tracking-widest text-white/50">Cargando imagen…</span>
+          <span className="text-[9px] font-black uppercase tracking-widest text-white/50">Preparando imágenes…</span>
         </div>
       )}
 
-      {/* ── Draggable tile pieces ───────────────────────────────────────────── */}
-      {/* Positioned in pixel space; the RAF loop updates left/top directly.   */}
+      {/* Draggable tile pieces */}
       {stateRef.current.tiles.map(t => {
         const placed = placedIds.has(t.id);
         return (
           <div
             key={t.id}
             ref={el => { if (el) tileElsRef.current[t.id] = el; }}
-            className={`absolute rounded-xl border-2 shadow-2xl ${
-              placed ? 'border-green-400' : 'border-white/35'
-            }`}
+            className={`absolute rounded-xl border-2 shadow-2xl ${placed ? 'border-green-400' : 'border-white/35'}`}
             style={{
               left:      `${t.x}px`,
               top:       `${t.y}px`,
               transform: 'translate(-50%, -50%)',
               width:     `${tilePx}px`,
               height:    `${tilePx}px`,
-              overflow:  'hidden',          // explicit — Tailwind class stripped on some builds
+              overflow:  'hidden',   // explicit in case Tailwind gets purged
               zIndex:    20,
               willChange:'left, top',
             }}
           >
-            {/* Pixel-precise image crop — no objectFit, no % ambiguity */}
-            {imgStatus !== 'error' ? (
+            {/* Pixel-precise crop — width/height/left/top all in px, no objectFit */}
+            {image ? (
               <img
                 src={image.url}
                 alt=""
@@ -390,10 +553,7 @@ const PuzzleModule = memo(({ addPoints }) => {
                 }}
               />
             ) : (
-              /* Fallback emoji when image fails to load */
-              <div className="w-full h-full flex items-center justify-center bg-white/5 text-5xl">
-                {image.emoji}
-              </div>
+              <div className="w-full h-full bg-white/5 animate-pulse" />
             )}
             {placed && (
               <div className="absolute inset-0 bg-green-500/20 flex items-center justify-center z-10">
@@ -404,7 +564,7 @@ const PuzzleModule = memo(({ addPoints }) => {
         );
       })}
 
-      {/* ── Win overlay ─────────────────────────────────────────────────────── */}
+      {/* Win overlay */}
       <AnimatePresence>
         {isWon && (
           <motion.div
@@ -431,7 +591,7 @@ const PuzzleModule = memo(({ addPoints }) => {
         )}
       </AnimatePresence>
 
-      {/* ── Reset button ────────────────────────────────────────────────────── */}
+      {/* Reset */}
       {!isWon && (
         <button
           onClick={handleReset}
@@ -441,7 +601,7 @@ const PuzzleModule = memo(({ addPoints }) => {
         </button>
       )}
 
-      {/* ── Instruction bar ─────────────────────────────────────────────────── */}
+      {/* Instruction */}
       {!isWon && (
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 glass px-7 py-3 rounded-2xl border border-white/10 animate-pulse">
           <p className="text-[9px] font-black uppercase tracking-[0.2em] text-white/50 italic text-center">
