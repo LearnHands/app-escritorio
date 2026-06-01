@@ -465,6 +465,8 @@ const PuzzleModule = memo(({ addPoints }) => {
           const row    = Math.floor(i / gridSize);
           const col    = i % gridSize;
           const placed = placedIds.has(i);
+          const hBgPosX = gridSize > 1 ? (col / (gridSize - 1)) * 100 : 0;
+          const hBgPosY = gridSize > 1 ? (row / (gridSize - 1)) * 100 : 0;
           return (
             <div
               key={i}
@@ -473,30 +475,19 @@ const PuzzleModule = memo(({ addPoints }) => {
                 placed ? 'border-green-500/60' : 'border-white/20'
               }`}
               style={{
-                position:    'relative',
-                aspectRatio: '1',
-                overflow:    'hidden',
-                background:  placed ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.03)',
+                position:           'relative',
+                aspectRatio:        '1',
+                backgroundColor:    placed ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.03)',
+                backgroundImage:    image && !placed ? `url("${image.url}")` : 'none',
+                backgroundSize:     `${gridSize * 100}% ${gridSize * 100}%`,
+                backgroundPosition: `${hBgPosX}% ${hBgPosY}%`,
+                backgroundRepeat:   'no-repeat',
+                opacity:            placed ? 1 : undefined,
               }}
             >
-              {/* Faint hint — pixel positioning, same formula as the draggable tile */}
-              {image && (
-                <img
-                  src={image.url}
-                  alt=""
-                  draggable={false}
-                  style={{
-                    position:      'absolute',
-                    display:       'block',
-                    width:         `${gridSize * tilePx}px`,
-                    height:        `${gridSize * tilePx}px`,
-                    left:          `${-col * tilePx}px`,
-                    top:           `${-row * tilePx}px`,
-                    opacity:       placed ? 0 : 0.18,
-                    pointerEvents: 'none',
-                    transition:    'opacity 0.3s',
-                  }}
-                />
+              {/* Faint tint over hint so it doesn't give the answer away */}
+              {image && !placed && (
+                <div className="absolute inset-0 rounded-xl" style={{ backgroundColor: 'rgba(3,3,11,0.82)' }} />
               )}
               {placed && (
                 <div className="absolute inset-0 flex items-center justify-center z-10">
@@ -518,45 +509,34 @@ const PuzzleModule = memo(({ addPoints }) => {
 
       {/* Draggable tile pieces */}
       {stateRef.current.tiles.map(t => {
-        const placed = placedIds.has(t.id);
+        const placed   = placedIds.has(t.id);
+        // CSS background-image crop — far more reliable than overflow:hidden + negative-left img
+        // background-size: N*100% scales the image to N tiles wide/tall
+        // background-position: col/(N-1)*100% row/(N-1)*100% reveals the correct cell
+        const bgPosX = gridSize > 1 ? (t.correctCol / (gridSize - 1)) * 100 : 0;
+        const bgPosY = gridSize > 1 ? (t.correctRow / (gridSize - 1)) * 100 : 0;
         return (
           <div
             key={t.id}
             ref={el => { if (el) tileElsRef.current[t.id] = el; }}
             className={`absolute rounded-xl border-2 shadow-2xl ${placed ? 'border-green-400' : 'border-white/35'}`}
             style={{
-              left:      `${t.x}px`,
-              top:       `${t.y}px`,
-              transform: 'translate(-50%, -50%)',
-              width:     `${tilePx}px`,
-              height:    `${tilePx}px`,
-              overflow:  'hidden',   // explicit in case Tailwind gets purged
-              zIndex:    20,
-              willChange:'left, top',
+              left:               `${t.x}px`,
+              top:                `${t.y}px`,
+              transform:          'translate(-50%, -50%)',
+              width:              `${tilePx}px`,
+              height:             `${tilePx}px`,
+              zIndex:             20,
+              willChange:         'left, top',
+              backgroundImage:    image ? `url("${image.url}")` : 'none',
+              backgroundSize:     `${gridSize * 100}% ${gridSize * 100}%`,
+              backgroundPosition: `${bgPosX}% ${bgPosY}%`,
+              backgroundRepeat:   'no-repeat',
+              backgroundColor:    image ? 'transparent' : 'rgba(255,255,255,0.05)',
             }}
           >
-            {/* Pixel-precise crop — width/height/left/top all in px, no objectFit */}
-            {image ? (
-              <img
-                src={image.url}
-                alt=""
-                draggable={false}
-                style={{
-                  position:      'absolute',
-                  display:       'block',
-                  width:         `${gridSize * tilePx}px`,
-                  height:        `${gridSize * tilePx}px`,
-                  left:          `${-t.correctCol * tilePx}px`,
-                  top:           `${-t.correctRow * tilePx}px`,
-                  pointerEvents: 'none',
-                  userSelect:    'none',
-                }}
-              />
-            ) : (
-              <div className="w-full h-full bg-white/5 animate-pulse" />
-            )}
             {placed && (
-              <div className="absolute inset-0 bg-green-500/20 flex items-center justify-center z-10">
+              <div className="absolute inset-0 bg-green-500/20 flex items-center justify-center z-10 rounded-xl">
                 <CheckCircle size={gridSize === 2 ? 30 : 20} className="text-white/80" />
               </div>
             )}
