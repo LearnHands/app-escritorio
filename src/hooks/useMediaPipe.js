@@ -100,7 +100,7 @@ async function buildLandmarker() {
       delegate: 'GPU'
     },
     runningMode: 'VIDEO',
-    numHands: 1,                     // 1 mano = mitad de costo vs 2
+    numHands: 2,                     // 2 manos: una para mover, otra para seleccionar
     minHandDetectionConfidence: 0.5,
     minHandPresenceConfidence: 0.5,
     minTrackingConfidence: 0.5
