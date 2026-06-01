@@ -6,13 +6,14 @@ import HandButton from '../HandButton';
 const FOOTER_H = 64;
 
 // Kid-friendly images — Unsplash stable IDs
+// w=800&h=800&fit=crop forces a square crop so tiles align perfectly
 const IMAGES = [
-  { url: 'https://images.unsplash.com/photo-1561948955-570b270e7c36?w=800&q=80', label: '🐱 Gato',    emoji: '🐱' },
-  { url: 'https://images.unsplash.com/photo-1587300003388-59208cc962cb?w=800&q=80', label: '🐶 Perro',   emoji: '🐶' },
-  { url: 'https://images.unsplash.com/photo-1564349683136-77e08dba1ef3?w=800&q=80', label: '🐼 Panda',   emoji: '🐼' },
-  { url: 'https://images.unsplash.com/photo-1474511320723-9a56873867b5?w=800&q=80', label: '🦊 Zorro',   emoji: '🦊' },
-  { url: 'https://images.unsplash.com/photo-1490750967868-88df5691cc1e?w=800&q=80', label: '🌸 Flores',  emoji: '🌸' },
-  { url: 'https://images.unsplash.com/photo-1462331940025-496dfbfc7564?w=800&q=80', label: '🌌 Espacio', emoji: '🌌' },
+  { url: 'https://images.unsplash.com/photo-1561948955-570b270e7c36?w=800&h=800&fit=crop&q=80', label: '🐱 Gato',    emoji: '🐱' },
+  { url: 'https://images.unsplash.com/photo-1587300003388-59208cc962cb?w=800&h=800&fit=crop&q=80', label: '🐶 Perro',   emoji: '🐶' },
+  { url: 'https://images.unsplash.com/photo-1564349683136-77e08dba1ef3?w=800&h=800&fit=crop&q=80', label: '🐼 Panda',   emoji: '🐼' },
+  { url: 'https://images.unsplash.com/photo-1474511320723-9a56873867b5?w=800&h=800&fit=crop&q=80', label: '🦊 Zorro',   emoji: '🦊' },
+  { url: 'https://images.unsplash.com/photo-1490750967868-88df5691cc1e?w=800&h=800&fit=crop&q=80', label: '🌸 Flores',  emoji: '🌸' },
+  { url: 'https://images.unsplash.com/photo-1462331940025-496dfbfc7564?w=800&h=800&fit=crop&q=80', label: '🌌 Espacio', emoji: '🌌' },
 ];
 
 // Grid width (must match CSS width: GRID_VW vw)
@@ -299,27 +300,32 @@ const PuzzleModule = memo(({ addPoints }) => {
             <div
               key={i}
               data-slot={i}
-              className={`relative rounded-xl border-2 overflow-hidden transition-colors duration-200 ${
+              className={`rounded-xl border-2 transition-colors duration-200 ${
                 placed ? 'border-green-500/60' : 'border-white/20'
               }`}
-              style={{ aspectRatio: '1', background: placed ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.03)' }}
+              style={{
+                position: 'relative',
+                aspectRatio: '1',
+                overflow: 'hidden',
+                background: placed ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.03)',
+              }}
             >
-              {/* Faint image hint so children know where each piece belongs */}
+              {/* Faint image hint — px positioning avoids % ambiguity */}
               {imgStatus !== 'error' && (
                 <img
                   src={image.url}
                   alt=""
                   draggable={false}
                   style={{
-                    position:       'absolute',
-                    width:          `${gridSize * 100}%`,
-                    height:         `${gridSize * 100}%`,
-                    left:           `${-col * 100}%`,
-                    top:            `${-row * 100}%`,
-                    objectFit:      'cover',
-                    opacity:        placed ? 0 : 0.18,
-                    pointerEvents:  'none',
-                    transition:     'opacity 0.3s',
+                    position:      'absolute',
+                    display:       'block',
+                    width:         `${gridSize * tilePx}px`,
+                    height:        `${gridSize * tilePx}px`,
+                    left:          `${-col * tilePx}px`,
+                    top:           `${-row * tilePx}px`,
+                    opacity:       placed ? 0 : 0.18,
+                    pointerEvents: 'none',
+                    transition:    'opacity 0.3s',
                   }}
                 />
               )}
@@ -352,7 +358,7 @@ const PuzzleModule = memo(({ addPoints }) => {
           <div
             key={t.id}
             ref={el => { if (el) tileElsRef.current[t.id] = el; }}
-            className={`absolute rounded-xl overflow-hidden border-2 shadow-2xl ${
+            className={`absolute rounded-xl border-2 shadow-2xl ${
               placed ? 'border-green-400' : 'border-white/35'
             }`}
             style={{
@@ -361,25 +367,26 @@ const PuzzleModule = memo(({ addPoints }) => {
               transform: 'translate(-50%, -50%)',
               width:     `${tilePx}px`,
               height:    `${tilePx}px`,
+              overflow:  'hidden',          // explicit — Tailwind class stripped on some builds
               zIndex:    20,
               willChange:'left, top',
             }}
           >
-            {/* Image portion — overflow+absolute img avoids background-position bugs */}
+            {/* Pixel-precise image crop — no objectFit, no % ambiguity */}
             {imgStatus !== 'error' ? (
               <img
                 src={image.url}
                 alt=""
                 draggable={false}
                 style={{
-                  position:     'absolute',
-                  width:        `${gridSize * 100}%`,
-                  height:       `${gridSize * 100}%`,
-                  left:         `${-t.correctCol * 100}%`,
-                  top:          `${-t.correctRow * 100}%`,
-                  objectFit:    'cover',
-                  pointerEvents:'none',
-                  userSelect:   'none',
+                  position:      'absolute',
+                  display:       'block',
+                  width:         `${gridSize * tilePx}px`,
+                  height:        `${gridSize * tilePx}px`,
+                  left:          `${-t.correctCol * tilePx}px`,
+                  top:           `${-t.correctRow * tilePx}px`,
+                  pointerEvents: 'none',
+                  userSelect:    'none',
                 }}
               />
             ) : (
