@@ -97,11 +97,16 @@ const SolarSystemModule = memo(({ addPoints }) => {
     targetX:0, targetY:0, targetScale:1,
     selectedPlanet: null,
     infoPage: 0,
-    // Per-hand arrays (index 0 = first hand, index 1 = second hand)
+    // Role-based gesture assignment (index of hand slot that owns each role, -1 = none)
+    // Role is claimed at pinch-start and released when that pinch ends.
+    // This is immune to MediaPipe hand-index reordering between frames.
+    movementHand:  -1,  // which hand slot is currently panning
+    interactHand:  -1,  // which hand slot is currently selecting/zooming
+    // Per-hand arrays
     hoveredPlanet:   [null, null],
     wasPinching:     [false, false],
     pinchHandled:    [true, true],
-    pinchMode:       [null, null],   // 'planet'|'zoom'|'card'|null
+    pinchMode:       [null, null],   // 'pan'|'planet'|'zoom'|'card'|null
     pinchStartY:     [0, 0],
     pinchStartScale: [1, 1],
     prevCursorX:     [null, null],
@@ -256,7 +261,7 @@ const SolarSystemModule = memo(({ addPoints }) => {
           ssPositions.push({name:p.name,x:px,y:py,r:p.r});
           if(!circleOnScreen(scrPx,scrPy,p.r*vs+60,W,H)) return;
 
-          const isHov=s.hoveredPlanet[1]===p.name; // only hand-1 (interaction) hovers
+          const isHov=s.hoveredPlanet[0]===p.name||s.hoveredPlanet[1]===p.name;
           const isSel=s.selectedPlanet===p.name;
 
           // Rings
@@ -321,11 +326,18 @@ const SolarSystemModule = memo(({ addPoints }) => {
         s.ssPositions=ssPositions;
         ctx.restore(); // end solar system transform
 
-        // ── Process each hand independently ─────────────────────────────────
-        // Role assignment (fixed):
-        //   Hand 0 (purple) → MOVEMENT: pinch or open-hand = pan
-        //   Hand 1 (green)  → INTERACTION: hover, planet select, zoom
-        // When card is open → BOTH hands: only pinch for card buttons or dismiss
+        // ── Process each hand — role-claimed-at-pinch-start ────────────────
+        // Role is assigned the moment a pinch begins and released when it ends.
+        // This makes the system immune to MediaPipe index reordering between frames.
+        // Open hand NEVER triggers movement — only active pinch does.
+        //
+        //  movementHand  = hand-slot index currently panning  (-1 = unclaimed)
+        //  interactHand  = hand-slot index currently selecting/zooming (-1 = unclaimed)
+        //
+        // Claim rules (no card):
+        //   pinch near planet  + interactHand free  → interaction / 'planet'
+        //   pinch empty space  + movementHand free  → movement    / 'pan'
+        //   pinch empty space  + movementHand taken → second pinch / 'zoom'
         const {cursors=[],gestures=[]}=window.latestHandData||{};
         const cardOpen=!!s.selectedPlanet;
         const cardEl=cardOpen?document.getElementById('solar-info-card'):null;
@@ -335,6 +347,9 @@ const SolarSystemModule = memo(({ addPoints }) => {
           const gesture=gestures[i];
 
           if(!cursor?.isVisible){
+            // Release any role this slot held
+            if(s.movementHand===i) s.movementHand=-1;
+            if(s.interactHand===i)  s.interactHand=-1;
             s.prevCursorX[i]=null; s.prevCursorY[i]=null;
             s.hoveredPlanet[i]=null; s.wasPinching[i]=false;
             s.pinchMode[i]=null; s.pinchHandled[i]=true;
@@ -347,19 +362,17 @@ const SolarSystemModule = memo(({ addPoints }) => {
           }
 
           const isPinching=!!gesture?.isPinching;
-          const isOpenHand=!!gesture?.isOpenHand;
-          const ssX=(cPx-ox)/vs;
-          const ssY=(cPy-oy)/vs;
+          const ssX=(cPx-ox)/vs, ssY=(cPy-oy)/vs;
 
           // ── CARD OPEN: both hands locked to pinch-only ─────────────────
           if(cardOpen){
             s.hoveredPlanet[i]=null;
+            if(s.movementHand===i) s.movementHand=-1;
+            if(s.interactHand===i)  s.interactHand=-1;
 
-            // Fresh pinch
             if(isPinching&&!s.wasPinching[i]){
               s.pinchHandled[i]=false;
               if(cardEl&&!hitEl(cPx,cPy,cardEl,0)){
-                // Pinch outside card → close & resume
                 s.selectedPlanet=null; s.infoPage=0; s.paused=false;
                 setSelectedInfo(null); setPaused(false);
                 s.pinchHandled[i]=true; s.pinchMode[i]=null;
@@ -368,7 +381,6 @@ const SolarSystemModule = memo(({ addPoints }) => {
               }
             }
 
-            // Card button hit-test every frame while pinching
             if(isPinching&&!s.pinchHandled[i]&&s.pinchMode[i]==='card'){
               const prevBtn=document.getElementById('solar-prev-btn');
               const nextBtn=document.getElementById('solar-next-btn');
@@ -381,86 +393,74 @@ const SolarSystemModule = memo(({ addPoints }) => {
                 if(planet){
                   for(let di=0;di<planet.pages.length;di++){
                     const dot=document.getElementById(`solar-dot-${di}`);
-                    if(dot&&hitEl(cPx,cPy,dot)){
-                      s.pinchHandled[i]=true; setInfoPageFn(di); break;
-                    }
+                    if(dot&&hitEl(cPx,cPy,dot)){s.pinchHandled[i]=true;setInfoPageFn(di);break;}
                   }
                 }
               }
             }
 
-            if(!isPinching&&s.wasPinching[i]){
-              s.pinchMode[i]=null; s.pinchHandled[i]=true;
-            }
-
+            if(!isPinching&&s.wasPinching[i]){s.pinchMode[i]=null;s.pinchHandled[i]=true;}
             s.wasPinching[i]=isPinching;
             s.prevCursorX[i]=cPx; s.prevCursorY[i]=cPy;
 
-            // Minimal cursor — only pinch state matters
             const cc=isPinching?HAND_COLORS[i]:'rgba(255,255,255,0.28)';
             ctx.beginPath(); ctx.arc(cPx,cPy,isPinching?8:13,0,Math.PI*2);
-            ctx.strokeStyle=cc; ctx.lineWidth=2;
-            ctx.setLineDash(isPinching?[]:[3,5]); ctx.stroke(); ctx.setLineDash([]);
-            if(isPinching){ctx.beginPath();ctx.arc(cPx,cPy,4,0,Math.PI*2);ctx.fillStyle=cc;ctx.fill();}
-            if(isPinching&&s.pinchMode[i]==='card'){
-              ctx.fillStyle=`${HAND_COLORS[i]}AA`; ctx.font='11px system-ui'; ctx.textAlign='left';
+            ctx.strokeStyle=cc; ctx.lineWidth=2; ctx.setLineDash(isPinching?[]:[3,5]); ctx.stroke(); ctx.setLineDash([]);
+            if(isPinching){ctx.beginPath();ctx.arc(cPx,cPy,4,0,Math.PI*2);ctx.fillStyle=cc;ctx.fill();
+              ctx.fillStyle=`${cc}BB`;ctx.font='11px system-ui';ctx.textAlign='left';
               ctx.fillText('🤏 Navegar',cPx+18,cPy+4);
-            }
-            continue; // skip normal processing
-          }
-
-          // ── NO CARD — HAND 0: movement only ───────────────────────────
-          if(i===0){
-            s.hoveredPlanet[0]=null; // movement hand never hovers
-            const isMoving=(isPinching||isOpenHand)&&s.prevCursorX[0]!==null;
-            if(isMoving){
-              const dx=cPx-s.prevCursorX[0], dy=cPy-s.prevCursorY[0];
-              if(isFinite(dx)&&isFinite(dy)){
-                s.targetX=Math.max(-800,Math.min(800,s.targetX+dx));
-                s.targetY=Math.max(-800,Math.min(800,s.targetY+dy));
-              }
-            }
-            s.wasPinching[0]=isPinching;
-            s.prevCursorX[0]=cPx; s.prevCursorY[0]=cPy;
-
-            // Cursor
-            const mv=isPinching||isOpenHand;
-            const cc=mv?HAND_COLORS[0]:'rgba(255,255,255,0.22)';
-            ctx.beginPath(); ctx.arc(cPx,cPy,mv?9:13,0,Math.PI*2);
-            ctx.strokeStyle=cc; ctx.lineWidth=2.5;
-            ctx.setLineDash(mv?[]:[3,5]); ctx.stroke(); ctx.setLineDash([]);
-            if(mv){ctx.beginPath();ctx.arc(cPx,cPy,4,0,Math.PI*2);ctx.fillStyle=cc;ctx.fill();}
-            if(mv){
-              ctx.fillStyle=`${HAND_COLORS[0]}CC`; ctx.font='11px system-ui'; ctx.textAlign='left';
-              ctx.fillText('✋ Mover',cPx+18,cPy+4);
             }
             continue;
           }
 
-          // ── NO CARD — HAND 1: interaction (hover, select, zoom) ────────
-          // Hover detection
+          // ── NO CARD: hover detection (any hand can show hover) ──────────
           let hover=null, hDist=Infinity;
           s.ssPositions.forEach(pos=>{
             const d=Math.hypot(ssX-pos.x,ssY-pos.y);
             if(d<pos.r*3.5&&d<hDist){hDist=d;hover=pos.name;}
           });
-          s.hoveredPlanet[1]=hover;
+          s.hoveredPlanet[i]=hover;
 
-          // Fresh pinch
-          if(isPinching&&!s.wasPinching[1]){
-            s.pinchHandled[1]=false;
-            s.pinchMode[1]=hover?'planet':'zoom';
-            if(s.pinchMode[1]==='zoom'){
-              s.pinchStartY[1]=cPy;
-              s.pinchStartScale[1]=s.targetScale;
+          // ── Pinch START: claim a role ────────────────────────────────────
+          if(isPinching&&!s.wasPinching[i]){
+            s.pinchHandled[i]=false;
+            if(hover&&s.interactHand===-1){
+              // Near a planet and no interaction hand yet → selection
+              s.interactHand=i;
+              s.pinchMode[i]='planet';
+            } else if(!hover&&s.movementHand===-1){
+              // Empty space, no movement hand yet → pan
+              s.movementHand=i;
+              s.pinchMode[i]='pan';
+            } else if(!hover&&s.movementHand!==-1&&s.interactHand===-1){
+              // Movement already claimed, empty space → zoom with second hand
+              s.interactHand=i;
+              s.pinchMode[i]='zoom';
+              s.pinchStartY[i]=cPy;
+              s.pinchStartScale[i]=s.targetScale;
             }
+            // All other cases (e.g. near planet but interactHand taken): no role, pinch ignored
           }
 
-          // Execute interaction mode
-          if(isPinching&&!s.pinchHandled[1]){
-            // Planet selection
-            if(s.pinchMode[1]==='planet'&&hover){
-              s.pinchHandled[1]=true;
+          // ── Execute role while pinching ─────────────────────────────────
+          if(isPinching&&s.prevCursorX[i]!==null){
+            // PAN
+            if(s.pinchMode[i]==='pan'&&s.movementHand===i){
+              const dx=cPx-s.prevCursorX[i], dy=cPy-s.prevCursorY[i];
+              if(isFinite(dx)&&isFinite(dy)){
+                s.targetX=Math.max(-800,Math.min(800,s.targetX+dx));
+                s.targetY=Math.max(-800,Math.min(800,s.targetY+dy));
+              }
+            }
+            // ZOOM
+            if(s.pinchMode[i]==='zoom'&&s.interactHand===i){
+              const dy=s.pinchStartY[i]-cPy;
+              const t=Math.max(-1,Math.min(1,dy/220));
+              s.targetScale=Math.max(MIN_ZOOM,Math.min(MAX_ZOOM,s.pinchStartScale[i]*(1+t*1.5)));
+            }
+            // PLANET SELECT (once per pinch)
+            if(s.pinchMode[i]==='planet'&&!s.pinchHandled[i]&&s.interactHand===i&&hover){
+              s.pinchHandled[i]=true;
               const planet=PLANETS.find(p=>p.name===hover);
               if(planet){
                 const isNew=!s.visited.has(hover);
@@ -476,32 +476,36 @@ const SolarSystemModule = memo(({ addPoints }) => {
                 setSelectedInfo({name:planet.name,color:planet.color,glow:planet.glow,pages:planet.pages,currentPage:0});
               }
             }
-            // Zoom drag
-            if(s.pinchMode[1]==='zoom'){
-              const dy=s.pinchStartY[1]-cPy;
-              const t=Math.max(-1,Math.min(1,dy/220));
-              s.targetScale=Math.max(MIN_ZOOM,Math.min(MAX_ZOOM,s.pinchStartScale[1]*(1+t*1.5)));
-            }
           }
 
-          if(!isPinching&&s.wasPinching[1]){
-            s.pinchMode[1]=null; s.pinchHandled[1]=true;
+          // ── Pinch END: free the role ────────────────────────────────────
+          if(!isPinching&&s.wasPinching[i]){
+            if(s.movementHand===i) s.movementHand=-1;
+            if(s.interactHand===i)  s.interactHand=-1;
+            s.pinchMode[i]=null; s.pinchHandled[i]=true;
           }
 
-          s.wasPinching[1]=isPinching;
-          s.prevCursorX[1]=cPx; s.prevCursorY[1]=cPy;
+          s.wasPinching[i]=isPinching;
+          s.prevCursorX[i]=cPx; s.prevCursorY[i]=cPy;
 
-          // Cursor for hand 1
-          const cc1=isPinching?HAND_COLORS[1]:hover?'#FCD34D':'rgba(255,255,255,0.35)';
+          // ── Draw cursor with role-based colour ─────────────────────────
+          const isMoving =s.movementHand===i;
+          const isInteract=s.interactHand===i;
+          // purple = movement role, green = interaction role, yellow = hovering planet, white = idle
+          const roleColor=isMoving?HAND_COLORS[0]:isInteract?HAND_COLORS[1]:hover?'#FCD34D':'rgba(255,255,255,0.32)';
           ctx.beginPath(); ctx.arc(cPx,cPy,isPinching?9:13,0,Math.PI*2);
-          ctx.strokeStyle=cc1; ctx.lineWidth=2.5;
+          ctx.strokeStyle=roleColor; ctx.lineWidth=2.5;
           ctx.setLineDash(isPinching?[]:[3,5]); ctx.stroke(); ctx.setLineDash([]);
-          if(hover||isPinching){ctx.beginPath();ctx.arc(cPx,cPy,4,0,Math.PI*2);ctx.fillStyle=cc1;ctx.fill();}
-          const hint1=s.pinchMode[1]==='zoom'?'🔍 ↑ acercar / ↓ alejar':
-                      isPinching&&hover?`🤏 ${hover}`:hover?`☝️ ${hover}`:'';
-          if(hint1){
-            ctx.fillStyle=`${HAND_COLORS[1]}CC`; ctx.font='11px system-ui'; ctx.textAlign='left';
-            ctx.fillText(hint1,cPx+18,cPy+4);
+          if(isPinching||hover){ctx.beginPath();ctx.arc(cPx,cPy,4,0,Math.PI*2);ctx.fillStyle=roleColor;ctx.fill();}
+          // Hint
+          let hint='';
+          if(s.pinchMode[i]==='pan')   hint='✋ Moviendo';
+          else if(s.pinchMode[i]==='zoom')  hint='🔍 Zoom ↑↓';
+          else if(isPinching&&hover)   hint=`🤏 ${hover}`;
+          else if(hover)               hint=`☝️ ${hover}`;
+          if(hint){
+            ctx.fillStyle=`${roleColor}CC`; ctx.font='11px system-ui'; ctx.textAlign='left';
+            ctx.fillText(hint,cPx+18,cPy+4);
           }
         } // end for each hand
 
@@ -653,11 +657,11 @@ const SolarSystemModule = memo(({ addPoints }) => {
       {!selectedInfo&&(
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 glass px-6 py-2.5 rounded-2xl border border-white/10 animate-pulse">
           <div className="flex items-center gap-4 text-[9px] font-black uppercase tracking-[0.12em]">
-            <span className="text-[#A78BFA]">🤏/✋ Mano 1 → mover</span>
+            <span className="text-[#A78BFA]">🤏 Pellizca espacio → mover</span>
             <div className="w-px h-3 bg-white/20"/>
-            <span className="text-[#34D399]">🤏 Mano 2 en planeta → explorar</span>
+            <span className="text-[#34D399]">🤏 Pellizca planeta → explorar</span>
             <div className="w-px h-3 bg-white/20"/>
-            <span className="text-white/40">🤏 Mano 2 en vacío ↕ → zoom</span>
+            <span className="text-white/40">🤏 2ª pinza espacio ↕ → zoom</span>
           </div>
         </div>
       )}
