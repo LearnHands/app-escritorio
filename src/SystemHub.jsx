@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'rea
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   Palette, Music, Puzzle, Play, ArrowLeft, Trophy, LogOut, BookOpen,
-  Gamepad2, Compass, Shield, Award, Lock,
+  Gamepad2, Compass, Shield, Award, Lock, FlaskConical, GraduationCap, Joystick,
 } from 'lucide-react';
 
 // Hooks
@@ -23,6 +23,7 @@ const SyllablesModule   = lazy(() => import('./components/hub/modules/SyllablesM
 const EcoGuardianModule = lazy(() => import('./components/hub/modules/EcoGuardianModule'));
 const MathAbacusModule  = lazy(() => import('./components/hub/modules/MathAbacusModule'));
 const SolarSystemModule = lazy(() => import('./components/hub/modules/SolarSystemModule'));
+const LabModule         = lazy(() => import('./components/hub/modules/LabModule'));
 
 import puceLogo from './assets/puce.png';
 
@@ -119,19 +120,31 @@ const SystemHub = ({ onExit }) => {
               )}
             </AnimatePresence>
 
-            <h2 className="text-5xl font-display font-black mb-16 italic text-gradient tracking-tighter uppercase underline decoration-purple-500/30 decoration-8 underline-offset-[16px]">Módulos de Aprendizaje</h2>
+            <h2 className="text-4xl md:text-5xl font-display font-black mb-10 italic text-gradient tracking-tighter uppercase underline decoration-purple-500/30 decoration-8 underline-offset-[16px]">Módulos</h2>
 
-            <div className="w-full max-w-6xl">
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-16 justify-items-center">
-                <MenuCard icon={<Palette />}    title="Pizarra"        color="purple"  locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('PIZARRA'); }} />
-                <MenuCard icon={<Music />}      title="Piano"          color="cyan"    locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('PIANO'); }} />
-                <MenuCard icon={<Puzzle />}     title="Puzzle"         color="orange"  locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('PUZZLE'); }} />
-                <MenuCard icon={<Compass />}    title="Constelación"   color="cyan"    locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('SOLAR'); }} />
-                <MenuCard icon={<Gamepad2 />}   title="Balls Crush"    color="orange"  locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('BRICKS'); }} />
-                <MenuCard icon={<BookOpen />}   title="Sílabas"        color="purple"  locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('SILABAS'); }} />
-                <MenuCard icon={<Shield />}     title="Eco-Clasificador" color="emerald" locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('ECO'); }} />
-                <MenuCard icon={<Award />}      title="Ábaco"          color="orange"  locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('ABACUS'); }} />
-                <MenuCard icon={<span className="text-4xl">🪐</span>} title="Sistema Solar" color="cyan" locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('SOLAR_SYS'); }} />
+            <div className="w-full max-w-6xl flex flex-col gap-10 overflow-y-auto px-2">
+              {/* ── Sección: Aprende (educativos) ── */}
+              <div>
+                <SectionHeader icon={<GraduationCap size={16} />} title="Aprende" subtitle="Módulos educativos" color="emerald" />
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-8 justify-items-center">
+                  <MenuCard icon={<FlaskConical />} title="Laboratorio"     color="cyan"    locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('LAB'); }} />
+                  <MenuCard icon={<span className="text-4xl">🪐</span>} title="Sistema Solar" color="cyan" locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('SOLAR_SYS'); }} />
+                  <MenuCard icon={<BookOpen />}   title="Sílabas"        color="purple"  locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('SILABAS'); }} />
+                  <MenuCard icon={<Award />}      title="Ábaco"          color="orange"  locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('ABACUS'); }} />
+                  <MenuCard icon={<Shield />}     title="Eco-Clasificador" color="emerald" locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('ECO'); }} />
+                </div>
+              </div>
+
+              {/* ── Sección: Diversión (juegos) ── */}
+              <div>
+                <SectionHeader icon={<Joystick size={16} />} title="Diversión" subtitle="Juegos interactivos" color="orange" />
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-8 justify-items-center">
+                  <MenuCard icon={<Palette />}    title="Pizarra"        color="purple"  locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('PIZARRA'); }} />
+                  <MenuCard icon={<Music />}      title="Piano"          color="cyan"    locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('PIANO'); }} />
+                  <MenuCard icon={<Puzzle />}     title="Puzzle"         color="orange"  locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('PUZZLE'); }} />
+                  <MenuCard icon={<Compass />}    title="Constelación"   color="cyan"    locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('SOLAR'); }} />
+                  <MenuCard icon={<Gamepad2 />}   title="Balls Crush"    color="orange"  locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('BRICKS'); }} />
+                </div>
               </div>
             </div>
           </motion.div>
@@ -158,6 +171,7 @@ const SystemHub = ({ onExit }) => {
                 {currentGame === 'ECO'       && <EcoGuardianModule addPoints={addPoints} />}
                 {currentGame === 'ABACUS'    && <MathAbacusModule  addPoints={addPoints} />}
                 {currentGame === 'SOLAR_SYS' && <SolarSystemModule addPoints={addPoints} />}
+                {currentGame === 'LAB'       && <LabModule         addPoints={addPoints} />}
               </Suspense>
             </div>
 
@@ -205,8 +219,23 @@ const SystemHub = ({ onExit }) => {
   );
 };
 
+const SectionHeader = ({ icon, title, subtitle, color }) => {
+  const tint = color === 'emerald' ? 'text-emerald-400' : color === 'orange' ? 'text-orange-400' : 'text-purple-400';
+  const line = color === 'emerald' ? 'from-emerald-500/40' : color === 'orange' ? 'from-orange-500/40' : 'from-purple-500/40';
+  return (
+    <div className="flex items-center gap-4 mb-6 px-2">
+      <div className={`flex items-center gap-2 ${tint}`}>
+        {icon}
+        <span className="font-display text-2xl font-black italic uppercase tracking-tight">{title}</span>
+      </div>
+      <span className="text-[9px] font-black uppercase tracking-[0.3em] text-white/30">{subtitle}</span>
+      <div className={`flex-1 h-px bg-gradient-to-r ${line} to-transparent`} />
+    </div>
+  );
+};
+
 const MenuCard = ({ icon, title, color, onSelect, locked }) => (
-  <div className="group relative w-52 md:w-56">
+  <div className="group relative w-44 md:w-48">
     <div className={`absolute -inset-1.5 bg-gradient-to-br blur-md rounded-[38px] transition-all duration-500 pointer-events-none ${locked ? 'opacity-0' : 'opacity-20 group-hover:opacity-100'} ${
       color === 'purple'  ? 'from-purple-500 to-indigo-500'  :
       color === 'cyan'    ? 'from-cyan-400 to-teal-500'      :
