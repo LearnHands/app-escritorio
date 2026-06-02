@@ -15,6 +15,20 @@ const computeTilePx = (gridSize) => {
 
 const gridSizeForLevel = (lvl) => (lvl >= 3 ? 4 : lvl >= 2 ? 3 : 2);
 
+// How many hint slots to reveal per level
+const HINT_COUNTS = { 1: 2, 2: 5, 3: 4 };
+const hintCountForLevel = (lvl) => HINT_COUNTS[lvl] ?? 4;
+
+// Fisher-Yates shuffle → pick `n` random indices from [0, total)
+const pickRandomSlots = (total, n) => {
+  const arr = Array.from({ length: total }, (_, i) => i);
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return new Set(arr.slice(0, Math.min(n, total)));
+};
+
 // ── User-supplied images from src/assets/puzzle/ ─────────────────────────────
 // Drop any PNG/JPG/WEBP into that folder; Vite picks them up at build time.
 // Recommended: square images, 400 × 400 px or larger.
@@ -278,10 +292,11 @@ const initTiles = (gridSize) => {
 
 // ══════════════════════════════════════════════════════════════════════════════
 const PuzzleModule = memo(({ addPoints }) => {
-  const [level,     setLevel]     = useState(1);
-  const [imageIdx,  setImageIdx]  = useState(0);
-  const [isWon,     setIsWon]     = useState(false);
-  const [placedIds, setPlacedIds] = useState(new Set());
+  const [level,       setLevel]       = useState(1);
+  const [imageIdx,    setImageIdx]    = useState(0);
+  const [isWon,       setIsWon]       = useState(false);
+  const [placedIds,   setPlacedIds]   = useState(new Set());
+  const [hintSlotIds, setHintSlotIds] = useState(new Set());
   // Images are generated locally — always available, never fail
   const [images, setImages] = useState([]);
 
@@ -289,12 +304,13 @@ const PuzzleModule = memo(({ addPoints }) => {
   addPointsRef.current = addPoints;
 
   const stateRef = useRef({
-    dragging:  {},
-    tiles:     [],
-    placedIds: new Set(),
-    isWon:     false,
-    level:     1,
-    imageIdx:  0,
+    dragging:    {},
+    tiles:       [],
+    placedIds:   new Set(),
+    hintSlotIds: new Set(),
+    isWon:       false,
+    level:       1,
+    imageIdx:    0,
   });
 
   const tileElsRef      = useRef({});   // { tileId → DOM element }
@@ -316,18 +332,23 @@ const PuzzleModule = memo(({ addPoints }) => {
 
   // ── Start / reset ──────────────────────────────────────────────────────────
   const startPuzzle = useCallback((lvl, imgIdx) => {
-    const s       = stateRef.current;
+    const s        = stateRef.current;
     const gridSize = gridSizeForLevel(lvl);
-    s.level    = lvl;
-    s.imageIdx = imgIdx;
-    s.tiles    = initTiles(gridSize);
-    s.placedIds = new Set();
-    s.dragging  = {};
-    s.isWon     = false;
+    const total    = gridSize * gridSize;
+    const hints    = pickRandomSlots(total, hintCountForLevel(lvl));
+
+    s.level      = lvl;
+    s.imageIdx   = imgIdx;
+    s.tiles      = initTiles(gridSize);
+    s.placedIds  = new Set();
+    s.hintSlotIds = hints;
+    s.dragging   = {};
+    s.isWon      = false;
     tileElsRef.current = {};
     setLevel(lvl);
     setImageIdx(imgIdx);
     setPlacedIds(new Set());
+    setHintSlotIds(new Set(hints));
     setIsWon(false);
     setTimeout(updateSlotCenters, 120);
   }, [updateSlotCenters]);
@@ -446,14 +467,12 @@ const PuzzleModule = memo(({ addPoints }) => {
 
   // ── Derived render values ──────────────────────────────────────────────────
   const gridSize = gridSizeForLevel(level);
-  const tileCount  = gridSize * gridSize;
-  const tilePx     = computeTilePx(gridSize);
-  const image      = images[imageIdx] || null;
-  // Hint visibility per level:
-  //   lvl 1 (2×2) → full hint (18 % opacity)
-  //   lvl 2 (3×3) → faint hint (8 % opacity)
-  //   lvl 3 (4×4) → no hint at all
-  const hintOpacity = level >= 3 ? 0 : level >= 2 ? 0.08 : 0.18;
+  const tileCount = gridSize * gridSize;
+  const tilePx    = computeTilePx(gridSize);
+  const image     = images[imageIdx] || null;
+  // All visible hint slots use the same opacity (20 %).
+  // The difficulty reduction comes from showing fewer slots, not dimming them.
+  const HINT_OPACITY = 0.20;
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -470,7 +489,7 @@ const PuzzleModule = memo(({ addPoints }) => {
         <span className={`text-[9px] font-black uppercase tracking-[0.2em] ${
           level >= 3 ? 'text-red-400' : level >= 2 ? 'text-amber-400' : 'text-green-400'
         }`}>
-          {level >= 3 ? '🚫 Sin pistas' : level >= 2 ? '👁 Pista mínima' : '👁 Con pistas'}
+          👁 {hintSlotIds.size}/{tileCount} pistas
         </span>
       </div>
 
@@ -490,35 +509,44 @@ const PuzzleModule = memo(({ addPoints }) => {
         }}
       >
         {Array.from({ length: tileCount }, (_, i) => {
-          const row    = Math.floor(i / gridSize);
-          const col    = i % gridSize;
-          const placed = placedIds.has(i);
-          const hBgPosX = gridSize > 1 ? (col / (gridSize - 1)) * 100 : 0;
-          const hBgPosY = gridSize > 1 ? (row / (gridSize - 1)) * 100 : 0;
+          const row      = Math.floor(i / gridSize);
+          const col      = i % gridSize;
+          const placed   = placedIds.has(i);
+          const isHint   = hintSlotIds.has(i) && !placed;
+          const hBgPosX  = gridSize > 1 ? (col / (gridSize - 1)) * 100 : 0;
+          const hBgPosY  = gridSize > 1 ? (row / (gridSize - 1)) * 100 : 0;
           return (
             <div
               key={i}
               data-slot={i}
               className={`rounded-xl border-2 transition-colors duration-200 ${
-                placed ? 'border-green-500/60' : 'border-white/20'
+                placed   ? 'border-green-500/60' :
+                isHint   ? 'border-purple-500/40' :
+                           'border-white/20'
               }`}
               style={{
-                position:           'relative',
-                aspectRatio:        '1',
-                backgroundColor:    placed ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.03)',
-                // Show hint image only when hintOpacity > 0 and slot not yet filled
-                backgroundImage:    image && !placed && hintOpacity > 0 ? `url("${image.url}")` : 'none',
+                position:        'relative',
+                aspectRatio:     '1',
+                backgroundColor: placed
+                  ? 'rgba(34,197,94,0.08)'
+                  : 'rgba(255,255,255,0.03)',
+                // Background image shown only on hint slots
+                backgroundImage:    isHint && image ? `url("${image.url}")` : 'none',
                 backgroundSize:     `${gridSize * 100}% ${gridSize * 100}%`,
                 backgroundPosition: `${hBgPosX}% ${hBgPosY}%`,
                 backgroundRepeat:   'no-repeat',
               }}
             >
-              {/* Dark overlay — controls how much of the hint shows through */}
-              {image && !placed && hintOpacity > 0 && (
+              {/* Dark overlay on hint slots so the fragment is subtle (20 % visible) */}
+              {isHint && image && (
                 <div
                   className="absolute inset-0 rounded-xl"
-                  style={{ backgroundColor: `rgba(3,3,11,${1 - hintOpacity})` }}
+                  style={{ backgroundColor: `rgba(3,3,11,${1 - HINT_OPACITY})` }}
                 />
+              )}
+              {/* Small hint indicator in corner */}
+              {isHint && (
+                <div className="absolute top-1 right-1 z-10 w-3 h-3 rounded-full bg-purple-500/60 border border-purple-400/40" />
               )}
               {placed && (
                 <div className="absolute inset-0 flex items-center justify-center z-10">
