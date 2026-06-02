@@ -103,7 +103,6 @@ const BricksModule = memo(({ addPoints }) => {
   const [gameState, setGameState] = useState('START'); // START, PLAYING, GAMEOVER, WIN
   const [muted, setMuted] = useState(false);
   const [activePowerupLabel, setActivePowerupLabel] = useState(null);
-  const [baseSpeed, setBaseSpeed] = useState(11); // Por defecto más ágil (11 en lugar de 7)
 
   // Referencias mutables para el ciclo Canvas (evita re-renders a 60 FPS)
   const stateRef = useRef({
@@ -123,7 +122,7 @@ const BricksModule = memo(({ addPoints }) => {
     aimAngle: -Math.PI / 2,
     lastTime: 0,
     lastPointsAwarded: 0,
-    baseSpeed: 11,
+    baseSpeed: 9,  // overridden in initGame per level
     width: window.innerWidth,
     height: window.innerHeight,
   });
@@ -153,24 +152,6 @@ const BricksModule = memo(({ addPoints }) => {
   const toggleMute = () => {
     soundCtrl.muted = !soundCtrl.muted;
     setMuted(soundCtrl.muted);
-  };
-
-  // Cambiar velocidad dinámicamente
-  const handleSpeedChange = (newSpeed) => {
-    setBaseSpeed(newSpeed);
-    const s = stateRef.current;
-    s.baseSpeed = newSpeed;
-    
-    s.balls.forEach(ball => {
-      ball.speed = newSpeed;
-      if (!ball.isDocked) {
-        const currentSpeed = Math.hypot(ball.vx, ball.vy);
-        if (currentSpeed > 0) {
-          ball.vx = (ball.vx / currentSpeed) * newSpeed;
-          ball.vy = (ball.vy / currentSpeed) * newSpeed;
-        }
-      }
-    });
   };
 
   // --- GENERACIÓN DE LADRILLOS PARA EL NIVEL (Ajustado dinámicamente al ancho de la pantalla) ---
@@ -223,9 +204,12 @@ const BricksModule = memo(({ addPoints }) => {
   const initGame = useCallback((lvl = 1) => {
     soundCtrl.init();
     const s = stateRef.current;
-    
+
     s.width = window.innerWidth;
     s.height = window.innerHeight;
+
+    // Speed grows per level: L1=9, L2=10.5, L3=12, L4=13.5 … cap at 20
+    s.baseSpeed = Math.min(20, 9 + (lvl - 1) * 1.5);
 
     s.gameState = 'PLAYING';
     s.level = lvl;
@@ -400,17 +384,19 @@ const BricksModule = memo(({ addPoints }) => {
           soundCtrl.playBounce();
         }
 
-        // Ladrillos
+        // Ladrillos — one bounce per frame per ball (prevents tunnelling)
+        let bouncedThisFrame = false;
         s.bricks.forEach((brick) => {
           if (brick.hp <= 0) return;
+          if (bouncedThisFrame && !ball.isFire) return; // fire ball penetrates all bricks
 
-          const bLeft = brick.x;
-          const bRight = brick.x + brick.w;
-          const bTop = brick.y;
+          const bLeft   = brick.x;
+          const bRight  = brick.x + brick.w;
+          const bTop    = brick.y;
           const bBottom = brick.y + brick.h;
 
           const closestX = Math.max(bLeft, Math.min(ball.x, bRight));
-          const closestY = Math.max(bTop, Math.min(ball.y, bBottom));
+          const closestY = Math.max(bTop,  Math.min(ball.y, bBottom));
           const dist = Math.hypot(ball.x - closestX, ball.y - closestY);
 
           if (dist < ball.radius) {
@@ -442,19 +428,36 @@ const BricksModule = memo(({ addPoints }) => {
             }
 
             if (!ball.isFire) {
-              const fromLeft = ball.x < bLeft;
-              const fromRight = ball.x > bRight;
-              const fromTop = ball.y < bTop;
-              const fromBottom = ball.y > bBottom;
+              // Minimum Penetration Vector: find the axis with least overlap and bounce there.
+              // This works even when the ball center is fully inside the brick (high-speed tunnelling).
+              const overlapL = (ball.x + ball.radius) - bLeft;
+              const overlapR = bRight  - (ball.x - ball.radius);
+              const overlapT = (ball.y + ball.radius) - bTop;
+              const overlapB = bBottom - (ball.y - ball.radius);
 
-              if (fromLeft || fromRight) {
-                ball.vx *= -1;
-                ball.x += ball.vx * 0.5;
+              const minH = Math.min(overlapL, overlapR);
+              const minV = Math.min(overlapT, overlapB);
+
+              if (minH <= minV) {
+                // Horizontal bounce
+                if (overlapL <= overlapR) {
+                  ball.vx = -Math.abs(ball.vx);
+                  ball.x  = bLeft - ball.radius;
+                } else {
+                  ball.vx = Math.abs(ball.vx);
+                  ball.x  = bRight + ball.radius;
+                }
+              } else {
+                // Vertical bounce
+                if (overlapT <= overlapB) {
+                  ball.vy = -Math.abs(ball.vy);
+                  ball.y  = bTop - ball.radius;
+                } else {
+                  ball.vy = Math.abs(ball.vy);
+                  ball.y  = bBottom + ball.radius;
+                }
               }
-              if (fromTop || fromBottom) {
-                ball.vy *= -1;
-                ball.y += ball.vy * 0.5;
-              }
+              bouncedThisFrame = true;
             }
           }
         });
@@ -646,25 +649,8 @@ const BricksModule = memo(({ addPoints }) => {
       ctx.clearRect(0, 0, s.width, s.height);
 
       // Subtle dark tint so game elements stay readable over the camera feed
-      ctx.fillStyle = 'rgba(3, 3, 11, 0.10)';
+      ctx.fillStyle = 'rgba(3, 3, 11, 0.18)';
       ctx.fillRect(0, 0, s.width, s.height);
-
-      // Rejilla neón
-      ctx.strokeStyle = 'rgba(139, 92, 246, 0.08)';
-      ctx.lineWidth = 1;
-      const gridSize = 45;
-      for (let x = 0; x < s.width; x += gridSize) {
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, s.height);
-        ctx.stroke();
-      }
-      for (let y = 0; y < s.height; y += gridSize) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(s.width, y);
-        ctx.stroke();
-      }
 
       // Ladrillos
       s.bricks.forEach((brick) => {
@@ -830,13 +816,10 @@ const BricksModule = memo(({ addPoints }) => {
         ctx.fillText(info.symbol, pu.x, pu.y);
       });
 
-      // Partículas
+      // Partículas — no shadowBlur to keep GPU load low
       s.particles.forEach((p) => {
-        ctx.shadowBlur = 8;
-        ctx.shadowColor = p.color;
-        ctx.fillStyle = p.color;
         ctx.globalAlpha = p.alpha;
-
+        ctx.fillStyle = p.color;
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
         ctx.fill();
@@ -903,20 +886,6 @@ const BricksModule = memo(({ addPoints }) => {
         </div>
 
         <div className="flex items-center gap-6">
-          <div className="flex items-center gap-3 bg-white/5 px-4 py-1.5 rounded-full border border-white/10 shadow-inner">
-            <span className="text-[9px] font-black uppercase text-purple-400 tracking-wider">Velocidad:</span>
-            <input 
-              type="range" 
-              min="7" 
-              max="22" 
-              step="0.5" 
-              value={baseSpeed} 
-              onChange={(e) => handleSpeedChange(parseFloat(e.target.value))} 
-              className="w-20 accent-purple-500 cursor-pointer h-1.5 bg-white/20 rounded-lg appearance-none transition-all" 
-            />
-            <span className="text-white font-bold text-xs min-w-[20px] text-center">{baseSpeed}</span>
-          </div>
-
           <div className="text-[10px] font-black uppercase text-purple-400 tracking-wider">
             Nivel: <span className="text-white font-bold text-sm ml-1">{level}</span>
           </div>
