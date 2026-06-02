@@ -446,9 +446,14 @@ const PuzzleModule = memo(({ addPoints }) => {
 
   // ── Derived render values ──────────────────────────────────────────────────
   const gridSize = gridSizeForLevel(level);
-  const tileCount = gridSize * gridSize;
-  const tilePx    = computeTilePx(gridSize);
-  const image     = images[imageIdx] || null;
+  const tileCount  = gridSize * gridSize;
+  const tilePx     = computeTilePx(gridSize);
+  const image      = images[imageIdx] || null;
+  // Hint visibility per level:
+  //   lvl 1 (2×2) → full hint (18 % opacity)
+  //   lvl 2 (3×3) → faint hint (8 % opacity)
+  //   lvl 3 (4×4) → no hint at all
+  const hintOpacity = level >= 3 ? 0 : level >= 2 ? 0.08 : 0.18;
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -461,6 +466,12 @@ const PuzzleModule = memo(({ addPoints }) => {
         <span className="text-[9px] font-black uppercase tracking-[0.2em] text-white/50">{image?.label ?? '…'}</span>
         <div className="w-px h-4 bg-white/20" />
         <span className="text-[9px] font-black uppercase tracking-[0.2em] text-white/30">{gridSize}×{gridSize}</span>
+        <div className="w-px h-4 bg-white/20" />
+        <span className={`text-[9px] font-black uppercase tracking-[0.2em] ${
+          level >= 3 ? 'text-red-400' : level >= 2 ? 'text-amber-400' : 'text-green-400'
+        }`}>
+          {level >= 3 ? '🚫 Sin pistas' : level >= 2 ? '👁 Pista mínima' : '👁 Con pistas'}
+        </span>
       </div>
 
       {/* Ghost target grid */}
@@ -495,16 +506,19 @@ const PuzzleModule = memo(({ addPoints }) => {
                 position:           'relative',
                 aspectRatio:        '1',
                 backgroundColor:    placed ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.03)',
-                backgroundImage:    image && !placed ? `url("${image.url}")` : 'none',
+                // Show hint image only when hintOpacity > 0 and slot not yet filled
+                backgroundImage:    image && !placed && hintOpacity > 0 ? `url("${image.url}")` : 'none',
                 backgroundSize:     `${gridSize * 100}% ${gridSize * 100}%`,
                 backgroundPosition: `${hBgPosX}% ${hBgPosY}%`,
                 backgroundRepeat:   'no-repeat',
-                opacity:            placed ? 1 : undefined,
               }}
             >
-              {/* Faint tint over hint so it doesn't give the answer away */}
-              {image && !placed && (
-                <div className="absolute inset-0 rounded-xl" style={{ backgroundColor: 'rgba(3,3,11,0.82)' }} />
+              {/* Dark overlay — controls how much of the hint shows through */}
+              {image && !placed && hintOpacity > 0 && (
+                <div
+                  className="absolute inset-0 rounded-xl"
+                  style={{ backgroundColor: `rgba(3,3,11,${1 - hintOpacity})` }}
+                />
               )}
               {placed && (
                 <div className="absolute inset-0 flex items-center justify-center z-10">
