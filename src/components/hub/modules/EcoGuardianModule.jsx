@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Shield, Heart, Trophy, RefreshCw, Volume2, VolumeX, Sparkles } from 'lucide-react';
 import HandButton from '../HandButton';
+import LifeLostOverlay from '../LifeLostOverlay';
 
 const ITEMS = [
   { symbol: '🍎', name: 'Manzana',    type: 'ORGANIC' },
@@ -46,6 +47,7 @@ const EcoGuardianModule = memo(({ addPoints }) => {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [items,        setItems]        = useState([]);
   const [particles,    setParticles]    = useState([]);
+  const [lifeFlash,    setLifeFlash]    = useState(0);   // incrementa al perder vida
 
   const audioCtxRef    = useRef(null);
   const frameRef       = useRef(null);
@@ -57,7 +59,8 @@ const EcoGuardianModule = memo(({ addPoints }) => {
     gameState: 'PLAYING',
     items: [],
     particles: [],
-    dragging: {}   // { handIdx: itemId }
+    dragging: {},  // { handIdx: itemId }
+    lifeLost: 0    // contador de vidas perdidas (dispara la animación)
   });
 
   const syncStates = useCallback(() => {
@@ -66,6 +69,7 @@ const EcoGuardianModule = memo(({ addPoints }) => {
     setLives(s.lives);
     setStreak(s.streak);
     setGameState(s.gameState);
+    setLifeFlash(s.lifeLost);
   }, []);
 
   const addPointsRef    = useRef(addPoints);
@@ -185,6 +189,7 @@ const EcoGuardianModule = memo(({ addPoints }) => {
       }
     } else {
       s.lives  = Math.max(0, s.lives - 1);
+      s.lifeLost += 1;
       s.streak = 0;
       playSoundRef.current('error');
       for (let k = 0; k < 15; k++) {
@@ -267,6 +272,7 @@ const EcoGuardianModule = memo(({ addPoints }) => {
       const filteredItems = nextItems.filter(item => {
         if (item.y > 102) {
           s.lives  = Math.max(0, s.lives - 1);
+          s.lifeLost += 1;
           s.streak = 0;
           playSoundRef.current('error');
           for (let k = 0; k < 10; k++) {
@@ -380,15 +386,25 @@ const EcoGuardianModule = memo(({ addPoints }) => {
         </motion.div>
 
         <div className="flex gap-6 z-20">
-          <div className="glass px-5 py-2 rounded-2xl border border-white/10 flex items-center gap-2">
+          <motion.div
+            key={lifeFlash}
+            animate={lifeFlash > 0 ? { x: [0, -8, 8, -6, 6, 0] } : {}}
+            transition={{ duration: 0.45 }}
+            className="glass px-5 py-2 rounded-2xl border border-white/10 flex items-center gap-2"
+          >
             {[...Array(3)].map((_, i) => (
-              <Heart
+              <motion.div
                 key={i}
-                size={18}
-                className={i < lives ? 'text-red-500 fill-red-500 animate-pulse' : 'text-white/20'}
-              />
+                animate={i === lives && lifeFlash > 0 ? { scale: [1.6, 1], opacity: [1, 0.2] } : {}}
+                transition={{ duration: 0.5 }}
+              >
+                <Heart
+                  size={18}
+                  className={i < lives ? 'text-red-500 fill-red-500 animate-pulse' : 'text-white/20'}
+                />
+              </motion.div>
             ))}
-          </div>
+          </motion.div>
           {streak >= 5 && (
             <motion.div
               initial={{ scale: 0 }} animate={{ scale: 1 }}
@@ -501,6 +517,9 @@ const EcoGuardianModule = memo(({ addPoints }) => {
           </p>
         </div>
       )}
+
+      {/* Feedback al perder una vida */}
+      <LifeLostOverlay trigger={lifeFlash} />
     </div>
   );
 });

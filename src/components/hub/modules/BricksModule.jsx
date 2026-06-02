@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Play, RotateCcw, Volume2, VolumeX, Trophy, Heart, Zap, Sparkles } from 'lucide-react';
 import HandButton from '../HandButton';
+import LifeLostOverlay from '../LifeLostOverlay';
 
 // --- CONFIGURACIÓN DE AUDIO SINTÉTICO (Web Audio API) ---
 class GameSoundController {
@@ -100,6 +101,7 @@ const BricksModule = memo(({ addPoints }) => {
   const [score, setScore] = useState(0);
   const [level, setLevel] = useState(1);
   const [lives, setLives] = useState(3);
+  const [lifeFlash, setLifeFlash] = useState(0);       // incrementa al perder vida
   const [gameState, setGameState] = useState('START'); // START, PLAYING, GAMEOVER, WIN
   const [muted, setMuted] = useState(false);
   const [activePowerupLabel, setActivePowerupLabel] = useState(null);
@@ -119,6 +121,7 @@ const BricksModule = memo(({ addPoints }) => {
     score: 0,
     level: 1,
     lives: 3,
+    lifeLost: 0,
     aimAngle: -Math.PI / 2,
     lastTime: 0,
     lastPointsAwarded: 0,
@@ -135,6 +138,7 @@ const BricksModule = memo(({ addPoints }) => {
     setScore(s.score);
     setLevel(s.level);
     setLives(s.lives);
+    setLifeFlash(s.lifeLost);
     setGameState(s.gameState);
 
     const active = Object.keys(s.activePowerups).filter(k => s.activePowerups[k] > 0);
@@ -559,6 +563,7 @@ const BricksModule = memo(({ addPoints }) => {
       // 7. VERIFICACIÓN DE CONDICIONES
       if (s.balls.length === 0) {
         s.lives -= 1;
+        s.lifeLost += 1;
         if (s.lives <= 0) {
           s.gameState = 'GAMEOVER';
           soundCtrl.playGameOver();
@@ -877,11 +882,16 @@ const BricksModule = memo(({ addPoints }) => {
           <div className="flex items-center gap-2">
             <Heart size={14} className="text-red-500 fill-red-500 animate-pulse" />
             Vidas:{' '}
-            <span className="text-white font-bold text-sm ml-1 flex gap-1">
+            <motion.span
+              key={lifeFlash}
+              animate={lifeFlash > 0 ? { x: [0, -7, 7, -5, 5, 0] } : {}}
+              transition={{ duration: 0.45 }}
+              className="text-white font-bold text-sm ml-1 flex gap-1"
+            >
               {Array.from({ length: Math.max(0, lives) }).map((_, i) => (
                 <span key={i}>❤️</span>
               ))}
-            </span>
+            </motion.span>
           </div>
         </div>
 
@@ -1016,6 +1026,9 @@ const BricksModule = memo(({ addPoints }) => {
           <span>Control: Desliza tu mano • Pellizco 🤏 para lanzar</span>
         </div>
       )}
+
+      {/* Feedback al perder una vida */}
+      <LifeLostOverlay trigger={lifeFlash} />
     </div>
   );
 });
