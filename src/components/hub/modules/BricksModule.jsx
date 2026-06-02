@@ -977,6 +977,7 @@ const BricksModule = memo(({ addPoints }) => {
                   className="px-10 py-5 text-xs"
                   variant="red"
                   dwellMs={900}
+                  graceMs={600}
                 >
                   <RotateCcw size={14} /> Intentar de Nuevo
                 </HandButton>
@@ -1004,6 +1005,7 @@ const BricksModule = memo(({ addPoints }) => {
                   className="px-10 py-5 text-xs"
                   variant="emerald"
                   dwellMs={900}
+                  graceMs={600}
                 >
                   <Play fill="white" size={12} /> Avanzar al Nivel {level + 1}
                 </HandButton>

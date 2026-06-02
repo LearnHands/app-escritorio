@@ -242,7 +242,9 @@ const LabModule = memo(({ addPoints }) => {
             <HandButton
               key={el.sym}
               onClick={() => addElement(el)}
-              dwellMs={650}
+              dwellMs={1150}
+              cooldownMs={900}
+              hitMargin={6}
               variant={el.color}
               className="w-[88px] h-[88px] rounded-2xl flex flex-col items-center justify-center gap-0.5 !p-0"
             >
@@ -296,7 +298,7 @@ const LabModule = memo(({ addPoints }) => {
 
               {/* Acción */}
               <div className="px-6 pb-6 flex justify-center">
-                <HandButton onClick={clearTable} dwellMs={700} variant={result.type === 'danger' ? 'red' : 'emerald'} className="px-10 py-4 text-xs">
+                <HandButton onClick={clearTable} dwellMs={900} graceMs={700} variant={result.type === 'danger' ? 'red' : 'emerald'} className="px-10 py-4 text-xs">
                   <Beaker size={14} /> Seguir experimentando
                 </HandButton>
               </div>
@@ -329,7 +331,7 @@ const LabModule = memo(({ addPoints }) => {
                 <span className="px-3 py-1 rounded-full bg-purple-500/15 text-purple-400">Curiosas</span>
                 <span className="px-3 py-1 rounded-full bg-red-500/15 text-red-400">Peligrosas</span>
               </div>
-              <HandButton onClick={() => setShowIntro(false)} dwellMs={800} variant="cyan" className="px-10 py-4 text-sm mt-1">
+              <HandButton onClick={() => setShowIntro(false)} dwellMs={900} graceMs={600} variant="cyan" className="px-10 py-4 text-sm mt-1">
                 <Sparkles size={16} /> Empezar el tutorial
               </HandButton>
             </motion.div>

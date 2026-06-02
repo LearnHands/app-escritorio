@@ -502,7 +502,7 @@ const EcoGuardianModule = memo(({ addPoints }) => {
             <p className="text-white/60 font-black uppercase tracking-[0.2em] text-xs mb-8">
               Tu puntaje final es: {score} Puntos
             </p>
-            <HandButton onClick={resetGame} className="px-12 py-5 text-xs max-w-xs w-full" variant="emerald" dwellMs={800}>
+            <HandButton onClick={resetGame} className="px-12 py-5 text-xs max-w-xs w-full" variant="emerald" dwellMs={800} graceMs={600}>
               <RefreshCw size={14} className="mr-2" /> VOLVER A INTENTAR
             </HandButton>
           </motion.div>

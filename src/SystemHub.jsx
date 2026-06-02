@@ -131,7 +131,7 @@ const SystemHub = ({ onExit }) => {
                   <MenuCard icon={<span className="text-4xl">🪐</span>} title="Sistema Solar" color="cyan" locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('SOLAR_SYS'); }} />
                   <MenuCard icon={<BookOpen />}   title="Sílabas"        color="purple"  locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('SILABAS'); }} />
                   <MenuCard icon={<Award />}      title="Ábaco"          color="orange"  locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('ABACUS'); }} />
-                  <MenuCard icon={<Shield />}     title="Eco-Clasificador" color="emerald" locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('ECO'); }} />
+                  <MenuCard icon={<Shield />}     title="Reciclaje"      color="emerald" locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('ECO'); }} />
                 </div>
               </div>
 
@@ -253,8 +253,8 @@ const MenuCard = ({ icon, title, color, onSelect, locked }) => (
       <div className={`p-4 bg-white/10 rounded-2xl ring-1 ring-white/15 transition-transform duration-500 ${locked ? '' : 'group-hover:scale-110'}`}>
         {React.cloneElement(icon, { size: 36 })}
       </div>
-      <div className="flex flex-col items-center gap-1">
-        <span className="font-display text-xl md:text-2xl font-black italic tracking-tight uppercase text-white drop-shadow-md">{title}</span>
+      <div className="flex flex-col items-center gap-1 w-full px-2">
+        <span className="font-display text-base md:text-lg font-black italic tracking-tight uppercase text-white drop-shadow-md text-center leading-tight break-words w-full">{title}</span>
         <div className={`h-1 bg-white/30 rounded-full transition-all duration-500 ${locked ? 'w-6' : 'w-10 group-hover:w-16'}`} />
       </div>
     </HandButton>
