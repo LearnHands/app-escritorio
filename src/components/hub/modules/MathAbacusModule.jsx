@@ -13,6 +13,7 @@ const MathAbacusModule = memo(({ addPoints }) => {
   const [streak, setStreak]           = useState(0);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [bubbles, setBubbles]         = useState([]);
+  const [feedbackMsg, setFeedbackMsg] = useState(null);
 
   const audioCtxRef   = useRef(null);
   const frameRef      = useRef(null);
@@ -22,6 +23,15 @@ const MathAbacusModule = memo(({ addPoints }) => {
   soundEnabledRef.current = soundEnabled;
   const addPointsRef  = useRef(addPoints);
   addPointsRef.current = addPoints;
+
+  const feedbackTimerRef = useRef(null);
+  const showFeedback = useCallback((text, type = 'ok') => {
+    clearTimeout(feedbackTimerRef.current);
+    setFeedbackMsg({ text, type });
+    feedbackTimerRef.current = setTimeout(() => setFeedbackMsg(null), 2200);
+  }, []);
+  const showFeedbackRef = useRef(showFeedback);
+  showFeedbackRef.current = showFeedback;
 
   // ── Toda la lógica mutable vive aquí ──
   const stateRef = useRef({
@@ -198,6 +208,8 @@ const MathAbacusModule = memo(({ addPoints }) => {
               // ✅ Suma correcta
               playSound('match_ok');
               addPointsRef.current(50 + s.streak * 10);
+              const numsLabel = s.selectedItems.map(i => i.value).join(' + ');
+              showFeedbackRef.current(`¡Correcto! ${numsLabel} = ${s.targetSum}`, 'ok');
               s.streak++;
 
               // Explosión de burbujas seleccionadas
@@ -223,6 +235,7 @@ const MathAbacusModule = memo(({ addPoints }) => {
             } else if (total > s.targetSum) {
               // ❌ Se pasó del límite
               playSound('overlimit');
+              showFeedbackRef.current(`Suma: ${total} — necesitas exactamente ${s.targetSum}`, 'error');
               s.streak = 0;
               s.selectedItems.forEach(item => {
                 const b = s.bubbles.find(b => b.id === item.id);
@@ -306,6 +319,28 @@ const MathAbacusModule = memo(({ addPoints }) => {
           </div>
         ))}
       </div>
+
+      {/* Feedback toast */}
+      <AnimatePresence>
+        {feedbackMsg && (
+          <motion.div
+            key={feedbackMsg.text}
+            initial={{ opacity: 0, y: 14, scale: 0.92 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -8, scale: 0.95 }}
+            transition={{ duration: 0.18 }}
+            className={`absolute bottom-24 left-1/2 -translate-x-1/2 z-50 px-6 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-2xl border whitespace-nowrap pointer-events-none ${
+              feedbackMsg.type === 'error'
+                ? 'bg-red-500/20 border-red-400/30 text-red-300'
+                : feedbackMsg.type === 'hint'
+                ? 'bg-amber-500/20 border-amber-400/30 text-amber-300'
+                : 'bg-emerald-500/20 border-emerald-400/30 text-emerald-300'
+            }`}
+          >
+            {feedbackMsg.text}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Instrucción */}
       <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 glass px-7 py-3 rounded-2xl border border-white/10 animate-pulse">

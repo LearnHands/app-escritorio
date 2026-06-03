@@ -304,13 +304,14 @@ const PuzzleModule = memo(({ addPoints }) => {
   addPointsRef.current = addPoints;
 
   const stateRef = useRef({
-    dragging:    {},
-    tiles:       [],
-    placedIds:   new Set(),
-    hintSlotIds: new Set(),
-    isWon:       false,
-    level:       1,
-    imageIdx:    0,
+    dragging:       {},
+    tiles:          [],
+    placedIds:      new Set(),
+    hintSlotIds:    new Set(),
+    isWon:          false,
+    level:          1,
+    imageIdx:       0,
+    levelStartTime: 0,   // suppresses RAF during DOM remount after level change
   });
 
   const tileElsRef      = useRef({});   // { tileId → DOM element }
@@ -337,13 +338,14 @@ const PuzzleModule = memo(({ addPoints }) => {
     const total    = gridSize * gridSize;
     const hints    = pickRandomSlots(total, hintCountForLevel(lvl));
 
-    s.level      = lvl;
-    s.imageIdx   = imgIdx;
-    s.tiles      = initTiles(gridSize);
-    s.placedIds  = new Set();
-    s.hintSlotIds = hints;
-    s.dragging   = {};
-    s.isWon      = false;
+    s.level          = lvl;
+    s.imageIdx       = imgIdx;
+    s.tiles          = initTiles(gridSize);
+    s.placedIds      = new Set();
+    s.hintSlotIds    = hints;
+    s.dragging       = {};
+    s.isWon          = false;
+    s.levelStartTime = performance.now();
     tileElsRef.current = {};
     setLevel(lvl);
     setImageIdx(imgIdx);
@@ -366,10 +368,12 @@ const PuzzleModule = memo(({ addPoints }) => {
   // ── RAF loop — direct DOM writes during drag ───────────────────────────────
   useEffect(() => {
     let animId;
-    const loop = () => {
+    const loop = (ts) => {
       animId = requestAnimationFrame(loop);
       const s = stateRef.current;
       if (s.isWon) return;
+      // Skip processing for 220ms after level start to let DOM remount settle
+      if (ts - s.levelStartTime < 220) return;
 
       const gridSize = gridSizeForLevel(s.level);
       const tilePx   = computeTilePx(gridSize);
@@ -491,6 +495,13 @@ const PuzzleModule = memo(({ addPoints }) => {
         }`}>
           👁 {hintSlotIds.size}/{tileCount} pistas
         </span>
+        <div className="w-px h-4 bg-white/20" />
+        {/* Piece progress counter */}
+        <span className={`text-[9px] font-black uppercase tracking-[0.2em] ${
+          placedIds.size === tileCount ? 'text-green-400' : placedIds.size > 0 ? 'text-cyan-400' : 'text-white/30'
+        }`}>
+          🧩 {placedIds.size}/{tileCount}
+        </span>
       </div>
 
       {/* Ghost target grid */}
@@ -609,7 +620,9 @@ const PuzzleModule = memo(({ addPoints }) => {
           <motion.div
             initial={{ opacity: 0, scale: 0.85 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/65 backdrop-blur-md"
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/75"
           >
             <motion.div
               animate={{ rotate: [0, -10, 10, 0], scale: [1, 1.1, 1] }}

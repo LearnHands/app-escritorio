@@ -1,64 +1,96 @@
 import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Star, Trophy, Volume2, VolumeX } from 'lucide-react';
+import { Star, Trophy, Volume2, VolumeX, Languages } from 'lucide-react';
+import HandButton from '../HandButton';
 
-// Words sorted by difficulty: 2-syllable words first, then 3-syllable words.
-// Players progress sequentially — no word repeats until all have been used.
-const WORDS = [
-  // ── Easy: 2 syllables ─────────────────────────────────────────────────────
-  { word: 'GATO',  syllables: ['GA',  'TO']  },
-  { word: 'PATO',  syllables: ['PA',  'TO']  },
-  { word: 'MANO',  syllables: ['MA',  'NO']  },
-  { word: 'LUNA',  syllables: ['LU',  'NA']  },
-  { word: 'CASA',  syllables: ['CA',  'SA']  },
-  { word: 'PERRO', syllables: ['PE',  'RRO'] },
-  { word: 'LÁPIZ', syllables: ['LÁ',  'PIZ'] },
-  // ── Medium: 3 syllables ───────────────────────────────────────────────────
-  { word: 'REGALO',   syllables: ['RE',  'GA',  'LO']  },
-  { word: 'PLANETA',  syllables: ['PLA', 'NE',  'TA']  },
-  { word: 'PLÁTANO',  syllables: ['PLÁ', 'TA',  'NO']  },
-  { word: 'MANZANA',  syllables: ['MAN', 'ZA',  'NA']  },
-  { word: 'ESTRELLA', syllables: ['ES',  'TRE', 'LLA'] },
+const WORDS_ES = [
+  { word: 'GATO',    syllables: ['GA',  'TO']        },
+  { word: 'PATO',    syllables: ['PA',  'TO']        },
+  { word: 'MANO',    syllables: ['MA',  'NO']        },
+  { word: 'LUNA',    syllables: ['LU',  'NA']        },
+  { word: 'CASA',    syllables: ['CA',  'SA']        },
+  { word: 'PERRO',   syllables: ['PE',  'RRO']       },
+  { word: 'LÁPIZ',   syllables: ['LÁ',  'PIZ']       },
+  { word: 'REGALO',  syllables: ['RE',  'GA',  'LO'] },
+  { word: 'PLANETA', syllables: ['PLA', 'NE',  'TA'] },
+  { word: 'PLÁTANO', syllables: ['PLÁ', 'TA',  'NO'] },
+  { word: 'MANZANA', syllables: ['MAN', 'ZA',  'NA'] },
+  { word: 'ESTRELLA',syllables: ['ES',  'TRE', 'LLA']},
 ];
 
-const DISTRACTORS = [
+const WORDS_EN = [
+  { word: 'RABBIT',   syllables: ['RAB',  'BIT']        },
+  { word: 'WINDOW',   syllables: ['WIN',  'DOW']        },
+  { word: 'FLOWER',   syllables: ['FLOW', 'ER']         },
+  { word: 'PENCIL',   syllables: ['PEN',  'CIL']        },
+  { word: 'TIGER',    syllables: ['TI',   'GER']        },
+  { word: 'BUTTER',   syllables: ['BUT',  'TER']        },
+  { word: 'MONKEY',   syllables: ['MON',  'KEY']        },
+  { word: 'MUSIC',    syllables: ['MU',   'SIC']        },
+  { word: 'UMBRELLA', syllables: ['UM',   'BREL', 'LA'] },
+  { word: 'TOGETHER', syllables: ['TO',   'GETH', 'ER'] },
+  { word: 'REMEMBER', syllables: ['RE',   'MEM',  'BER']},
+  { word: 'COMPUTER', syllables: ['COM',  'PU',   'TER']},
+];
+
+const DISTRACTORS_ES = [
   'MA', 'PA', 'LU', 'CA', 'PE', 'TA', 'BA', 'ZO',
   'LI', 'CO', 'RU', 'SA', 'TE', 'BO', 'FI', 'NO',
-  'MI', 'DE', 'SU', 'JA', 'ME', 'NE', 'TI', 'PO'
+  'MI', 'DE', 'SU', 'JA', 'ME', 'NE', 'TI', 'PO',
+];
+const DISTRACTORS_EN = [
+  'BIT', 'CAT', 'DOG', 'RUN', 'FUN', 'WIN', 'SUN', 'HOP',
+  'DAY', 'WAY', 'PAY', 'GAP', 'HAT', 'MAT', 'FLY', 'SKY',
+  'MAN', 'PAN', 'COT', 'HOT', 'FIT', 'PET', 'SET', 'CUT',
 ];
 
 const SyllablesModule = memo(({ addPoints }) => {
-  // ── Progress tracking (no repeats) ────────────────────────────────────────
-  // usedSet tracks which WORDS indices have been shown this cycle.
-  // wordCursor is the next index to try in the sequential order.
-  const usedSetRef    = useRef(new Set());
-  const wordCursorRef = useRef(0);
-  const wordsCompletedRef = useRef(0); // total words completed (for speed scaling)
+  const [lang, setLang] = useState('es'); // 'es' | 'en'
 
-  // Pick the next sequential unused word; wraps cycle when all are exhausted.
+  const WORDS       = lang === 'es' ? WORDS_ES : WORDS_EN;
+  const DISTRACTORS = lang === 'es' ? DISTRACTORS_ES : DISTRACTORS_EN;
+
+  const usedSetRef        = useRef(new Set());
+  const wordCursorRef     = useRef(0);
+  const wordsCompletedRef = useRef(0);
+
   const pickNextIndex = useCallback(() => {
-    if (usedSetRef.current.size >= WORDS.length) {
-      usedSetRef.current = new Set(); // all seen — reset cycle
+    const bank = lang === 'es' ? WORDS_ES : WORDS_EN;
+    if (usedSetRef.current.size >= bank.length) {
+      usedSetRef.current = new Set();
     }
-    for (let i = 0; i < WORDS.length; i++) {
-      const idx = (wordCursorRef.current + i) % WORDS.length;
+    for (let i = 0; i < bank.length; i++) {
+      const idx = (wordCursorRef.current + i) % bank.length;
       if (!usedSetRef.current.has(idx)) {
         usedSetRef.current.add(idx);
-        wordCursorRef.current = (idx + 1) % WORDS.length;
+        wordCursorRef.current = (idx + 1) % bank.length;
         return idx;
       }
     }
-    return 0; // unreachable
-  }, []);
+    return 0;
+  }, [lang]);
 
   const [wordIndex, setWordIndex] = useState(() => {
-    const idx = 0; // always start with the easiest word
-    usedSetRef.current.add(idx);
+    usedSetRef.current.add(0);
     wordCursorRef.current = 1;
-    return idx;
+    return 0;
   });
 
-  const currentWord = WORDS[wordIndex];
+  // Reset to first word whenever language changes
+  useEffect(() => {
+    wordCursorRef.current = 1;
+    setWordIndex(0);
+    setSlots(WORDS[0].syllables.map(() => null));
+    setBubbles([]);
+    setIsWordWon(false);
+    setParticles([]);
+    const s = stateRef.current;
+    s.wordIdx = 0; s.slots = WORDS[0].syllables.map(() => null);
+    s.bubbles = []; s.dragging = {}; s.isWordWon = false;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lang]);
+
+  const currentWord = WORDS[Math.min(wordIndex, WORDS.length - 1)];
 
   const [slots, setSlots]               = useState(() => Array(currentWord.syllables.length).fill(null));
   const [bubbles, setBubbles]           = useState([]);
@@ -66,6 +98,7 @@ const SyllablesModule = memo(({ addPoints }) => {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [particles, setParticles]       = useState([]);
   const [isWordWon, setIsWordWon]       = useState(false);
+  const [feedbackMsg, setFeedbackMsg]   = useState(null); // { text, type: 'ok'|'hint'|'error' }
 
   const audioCtxRef     = useRef(null);
   const frameRef        = useRef(null);
@@ -85,12 +118,30 @@ const SyllablesModule = memo(({ addPoints }) => {
   addPointsRef.current  = addPoints;
   const soundEnabledRef = useRef(soundEnabled);
   soundEnabledRef.current = soundEnabled;
+  // Always-current word bank (used inside stable [] RAF callbacks)
+  const wordBankRef = useRef({ words: WORDS_ES, distractors: DISTRACTORS_ES });
+  wordBankRef.current = { words: WORDS, distractors: DISTRACTORS };
+
+  // Track current language for use inside stable RAF loop
+  const langRef = useRef(lang);
+  langRef.current = lang;
+
+  // Feedback toast (safe to call from RAF via ref)
+  const feedbackTimerRef = useRef(null);
+  const showFeedback = useCallback((text, type = 'ok') => {
+    clearTimeout(feedbackTimerRef.current);
+    setFeedbackMsg({ text, type });
+    feedbackTimerRef.current = setTimeout(() => setFeedbackMsg(null), 2200);
+  }, []);
+  const showFeedbackRef = useRef(showFeedback);
+  showFeedbackRef.current = showFeedback;
 
   // Sync stateRef when the active word changes
   useEffect(() => {
-    const s = stateRef.current;
+    const s    = stateRef.current;
+    const bank = wordBankRef.current.words;
     s.wordIdx   = wordIndex;
-    s.slots     = Array(WORDS[wordIndex].syllables.length).fill(null);
+    s.slots     = Array(bank[wordIndex]?.syllables.length ?? 2).fill(null);
     s.isWordWon = false;
     s.bubbles   = [];
     s.dragging  = {};
@@ -158,9 +209,10 @@ const SyllablesModule = memo(({ addPoints }) => {
   // ── Load next word (sequential, no-repeat) ────────────────────────────────
   const initWord = useCallback(() => {
     const nextIdx = pickNextIndex();
-    const s = stateRef.current;
+    const s       = stateRef.current;
+    const bank    = wordBankRef.current.words;
     s.wordIdx   = nextIdx;
-    s.slots     = Array(WORDS[nextIdx].syllables.length).fill(null);
+    s.slots     = Array(bank[nextIdx]?.syllables.length ?? 2).fill(null);
     s.bubbles   = [];
     s.dragging  = {};
     s.isWordWon = false;
@@ -179,17 +231,19 @@ const SyllablesModule = memo(({ addPoints }) => {
 
   // ── Spawn bubble ──────────────────────────────────────────────────────────
   const spawnBubble = useCallback(() => {
-    const s = stateRef.current;
+    const s    = stateRef.current;
     if (s.isWordWon) return;
 
-    const word             = WORDS[s.wordIdx];
+    const { words, distractors } = wordBankRef.current;
+    const word             = words[s.wordIdx];
+    if (!word) return;
     const missingSyllables = word.syllables.filter((_, i) => s.slots[i] === null);
     if (missingSyllables.length === 0) return;
 
     const isTarget     = Math.random() < 0.65;
     const syllableText = isTarget
       ? missingSyllables[Math.floor(Math.random() * missingSyllables.length)]
-      : DISTRACTORS[Math.floor(Math.random() * DISTRACTORS.length)];
+      : distractors[Math.floor(Math.random() * distractors.length)];
 
     bubbleIdCounter.current += 1;
     s.bubbles.push({
@@ -252,7 +306,7 @@ const SyllablesModule = memo(({ addPoints }) => {
       }));
 
       // 1. Move bubbles; drag grabbed ones with cursor
-      const word        = WORDS[s.wordIdx];
+      const word        = wordBankRef.current.words[s.wordIdx];
       const nextBubbles = s.bubbles
         .map(b => {
           const bCopy = { ...b };
@@ -343,6 +397,15 @@ const SyllablesModule = memo(({ addPoints }) => {
                     snapped = true;
                   } else {
                     playSound('error');
+                    // Hint: show which syllable belongs in this slot
+                    const expected = word.syllables[i];
+                    const langKey = wordBankRef.current.words === WORDS_EN ? 'en' : 'es';
+                    showFeedbackRef.current(
+                      langKey === 'es'
+                        ? `"${bubble.text}" no va en esa posición — busca "${expected}"`
+                        : `"${bubble.text}" doesn't fit here — look for "${expected}"`,
+                      'hint'
+                    );
                   }
                   break;
                 }
@@ -369,6 +432,22 @@ const SyllablesModule = memo(({ addPoints }) => {
         wordsCompletedRef.current += 1;
         addPointsRef.current(150 + wordsCompletedRef.current * 20); // bonus grows with progress
         setStreak(prev => prev + 1);
+
+        // Pronounce the completed word after win sound finishes
+        const wonWord = wordBankRef.current.words[s.wordIdx]?.word ?? '';
+        if (wonWord && soundEnabledRef.current && window.speechSynthesis) {
+          setTimeout(() => {
+            try {
+              window.speechSynthesis.cancel();
+              const u = new SpeechSynthesisUtterance(wonWord.toLowerCase());
+              u.lang  = langRef.current === 'en' ? 'en-US' : 'es-ES';
+              u.rate  = 0.75;
+              u.pitch = 1.0;
+              window.speechSynthesis.speak(u);
+            } catch (e) { /* ignore */ }
+          }, 650); // wait for win jingle to finish
+        }
+
         setTimeout(() => initWord(), 2500);
       }
 
@@ -379,25 +458,49 @@ const SyllablesModule = memo(({ addPoints }) => {
     return () => cancelAnimationFrame(frameRef.current);
   }, []); // Stable loop — all live values via stateRef / stable refs
 
-  // ── Difficulty badge ──────────────────────────────────────────────────────
-  const difficultyLabel = currentWord.syllables.length === 2 ? 'Básico' : 'Avanzado';
+  const difficultyLabel = currentWord.syllables.length === 2
+    ? (lang === 'es' ? 'Básico' : 'Basic')
+    : (lang === 'es' ? 'Avanzado' : 'Advanced');
   const difficultyColor = currentWord.syllables.length === 2 ? 'text-emerald-400' : 'text-amber-400';
+
+  // Reset state when language changes
+  const handleLangToggle = useCallback(() => {
+    setLang(prev => {
+      const next = prev === 'es' ? 'en' : 'es';
+      usedSetRef.current    = new Set();
+      wordCursorRef.current = 0;
+      wordsCompletedRef.current = 0;
+      return next;
+    });
+  }, []);
 
   return (
     <div className="w-full h-full relative overflow-hidden select-none flex flex-col items-center">
 
-      {/* Sound Toggle */}
+      {/* Sound + Language toggles */}
       <button
         onClick={() => setSoundEnabled(prev => !prev)}
         className="absolute top-4 right-12 z-50 p-4 glass rounded-2xl border border-white/10 text-white/40 hover:text-white transition-all hover:scale-105"
       >
         {soundEnabled ? <Volume2 size={20} /> : <VolumeX size={20} />}
       </button>
+      <div className="absolute top-4 right-28 z-50">
+        <HandButton
+          onClick={handleLangToggle}
+          dwellMs={1200}
+          hitMargin={8}
+          variant="default"
+          className="flex items-center gap-2 px-4 py-3 text-[9px]"
+        >
+          <Languages size={15} />
+          <span className="font-black uppercase tracking-widest">{lang === 'es' ? '🇪🇸 ES' : '🇺🇸 EN'}</span>
+        </HandButton>
+      </div>
 
       {/* Target Word Panel */}
       <div className="absolute top-[28%] left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-4 text-center z-10 w-full max-w-lg px-6">
         <motion.div
-          key={wordIndex}
+          key={`${lang}-${wordIndex}`}
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           className="glass-dark px-10 py-5 rounded-[32px] border border-white/10 shadow-2xl flex flex-col items-center gap-2"
@@ -407,13 +510,15 @@ const SyllablesModule = memo(({ addPoints }) => {
               {difficultyLabel}
             </span>
             <span className="text-white/20 text-[10px]">•</span>
-            <span className="text-[10px] font-black text-purple-400 uppercase tracking-[0.4em]">Forma la Palabra</span>
+            <span className="text-[10px] font-black text-purple-400 uppercase tracking-[0.4em]">
+              {lang === 'es' ? 'Forma la Palabra' : 'Build the Word'}
+            </span>
           </div>
           <h2 className="text-4xl md:text-5xl font-display font-black uppercase italic tracking-wider text-gradient">
             {currentWord.word}
           </h2>
           <span className="text-[9px] text-white/30 font-black uppercase tracking-widest">
-            {currentWord.syllables.length} sílabas
+            {currentWord.syllables.length} {lang === 'es' ? 'sílabas' : 'syllables'}
           </span>
         </motion.div>
 
@@ -473,7 +578,7 @@ const SyllablesModule = memo(({ addPoints }) => {
               {slots[i] || '?'}
             </motion.div>
             <span className="text-[10px] font-black text-white/30 uppercase tracking-widest italic">
-              Sílaba {i + 1}
+              {lang === 'es' ? 'Sílaba' : 'Syllable'} {i + 1}
             </span>
           </div>
         ))}
@@ -486,20 +591,37 @@ const SyllablesModule = memo(({ addPoints }) => {
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 z-40 bg-black/50 backdrop-blur-sm flex flex-col items-center justify-center"
+            className="absolute inset-0 z-40 bg-black/50 backdrop-blur-sm flex flex-col items-center justify-center gap-3"
           >
             <motion.div
               animate={{ rotate: 360 }}
               transition={{ repeat: Infinity, duration: 4, ease: 'linear' }}
-              className="mb-6"
             >
-              <Trophy size={110} className="text-amber-400 drop-shadow-[0_0_30px_rgba(245,158,11,0.5)]" />
+              <Trophy size={80} className="text-amber-400 drop-shadow-[0_0_30px_rgba(245,158,11,0.5)]" />
             </motion.div>
-            <h2 className="text-5xl font-display font-black text-gradient uppercase italic tracking-tighter mb-2">
-              ¡Genial!
+            <h2 className="text-5xl font-display font-black text-gradient uppercase italic tracking-tighter">
+              {lang === 'es' ? '¡Genial!' : 'Great!'}
             </h2>
-            <p className="text-white/60 font-black uppercase tracking-[0.3em] text-xs">
-              Palabra completada · siguiente en un momento…
+            {/* Syllable breakdown */}
+            <div className="flex items-center gap-2 mt-1">
+              {currentWord.syllables.map((syl, i) => (
+                <React.Fragment key={i}>
+                  <motion.span
+                    initial={{ scale: 0, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ delay: i * 0.12 }}
+                    className="text-xl font-black text-white bg-purple-500/30 px-4 py-2 rounded-xl border border-purple-400/40"
+                  >
+                    {syl}
+                  </motion.span>
+                  {i < currentWord.syllables.length - 1 && (
+                    <span className="text-white/30 text-lg font-black">·</span>
+                  )}
+                </React.Fragment>
+              ))}
+            </div>
+            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/40">
+              {currentWord.syllables.length} {lang === 'es' ? 'sílabas' : 'syllables'} · {lang === 'es' ? 'siguiente en un momento…' : 'next word coming up…'}
             </p>
           </motion.div>
         )}
@@ -523,12 +645,36 @@ const SyllablesModule = memo(({ addPoints }) => {
         </div>
       ))}
 
+      {/* Feedback toast */}
+      <AnimatePresence>
+        {feedbackMsg && (
+          <motion.div
+            key={feedbackMsg.text}
+            initial={{ opacity: 0, y: 14, scale: 0.92 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -8, scale: 0.95 }}
+            transition={{ duration: 0.18 }}
+            className={`absolute bottom-24 left-1/2 -translate-x-1/2 z-50 px-6 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-2xl border whitespace-nowrap pointer-events-none ${
+              feedbackMsg.type === 'error'
+                ? 'bg-red-500/20 border-red-400/30 text-red-300'
+                : feedbackMsg.type === 'hint'
+                ? 'bg-amber-500/20 border-amber-400/30 text-amber-300'
+                : 'bg-emerald-500/20 border-emerald-400/30 text-emerald-300'
+            }`}
+          >
+            {feedbackMsg.text}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Instructions */}
       {!isWordWon && (
         <div className="absolute bottom-6 flex items-center gap-6 glass px-8 py-3.5 rounded-[24px] border border-white/10 animate-pulse z-30">
           <span className="text-2xl">🤏</span>
           <p className="text-[9px] font-black uppercase tracking-[0.2em] text-white/50 italic">
-            Usa pinza en el aire para atrapar una sílaba y arrástrala a su lugar
+            {lang === 'es'
+              ? 'Usa pinza en el aire para atrapar una sílaba y arrástrala a su lugar'
+              : 'Pinch a syllable bubble and drag it to its slot'}
           </p>
         </div>
       )}

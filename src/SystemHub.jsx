@@ -24,6 +24,7 @@ const EcoGuardianModule = lazy(() => import('./components/hub/modules/EcoGuardia
 const MathAbacusModule  = lazy(() => import('./components/hub/modules/MathAbacusModule'));
 const SolarSystemModule = lazy(() => import('./components/hub/modules/SolarSystemModule'));
 const LabModule         = lazy(() => import('./components/hub/modules/LabModule'));
+const EnglishModule     = lazy(() => import('./components/hub/modules/EnglishModule'));
 
 import puceLogo from './assets/puce.png';
 
@@ -126,10 +127,11 @@ const SystemHub = ({ onExit }) => {
               {/* ── Sección: Aprende (educativos) ── */}
               <div>
                 <SectionHeader icon={<GraduationCap size={16} />} title="Aprende" subtitle="Módulos educativos" color="emerald" />
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-8 justify-items-center">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6 justify-items-center">
                   <MenuCard icon={<FlaskConical />} title="Laboratorio"     color="cyan"    locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('LAB'); }} />
                   <MenuCard icon={<span className="text-4xl">🪐</span>} title="Sistema Solar" color="cyan" locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('SOLAR_SYS'); }} />
                   <MenuCard icon={<BookOpen />}   title="Sílabas"        color="purple"  locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('SILABAS'); }} />
+                  <MenuCard icon={<span className="text-4xl">🇺🇸</span>} title="English" color="cyan" locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('ENGLISH'); }} />
                   <MenuCard icon={<Award />}      title="Ábaco"          color="orange"  locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('ABACUS'); }} />
                   <MenuCard icon={<Shield />}     title="Reciclaje"      color="emerald" locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('ECO'); }} />
                 </div>
@@ -172,6 +174,7 @@ const SystemHub = ({ onExit }) => {
                 {currentGame === 'ABACUS'    && <MathAbacusModule  addPoints={addPoints} />}
                 {currentGame === 'SOLAR_SYS' && <SolarSystemModule addPoints={addPoints} />}
                 {currentGame === 'LAB'       && <LabModule         addPoints={addPoints} />}
+                {currentGame === 'ENGLISH'   && <EnglishModule     addPoints={addPoints} />}
               </Suspense>
             </div>
 
