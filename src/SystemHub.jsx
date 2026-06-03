@@ -184,7 +184,7 @@ const SystemHub = ({ onExit }) => {
                 {currentGame === 'ECO'       && <EcoGuardianModule addPoints={addPoints} />}
                 {currentGame === 'ABACUS'    && <MathAbacusModule  addPoints={addPoints} />}
                 {currentGame === 'SOLAR_SYS' && <SolarSystemModule addPoints={addPoints} />}
-                {currentGame === 'LAB'        && <LabModule          addPoints={addPoints} />}
+                {currentGame === 'LAB'       && <LabModule         addPoints={addPoints} />}
                 {currentGame === 'CIRCUITS'  && <CircuitsModule     addPoints={addPoints} />}
                 {currentGame === 'ATOMS'     && <AtomsModule        addPoints={addPoints} />}
                 {currentGame === 'CODING'    && <CodingBlocksModule addPoints={addPoints} />}
