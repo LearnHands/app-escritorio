@@ -92,21 +92,22 @@ const SystemHub = ({ onExit }) => {
       const gesture = data.gestures?.[0];
 
       if (gesture?.isPinching && cursor?.isVisible) {
+        // Activar scroll inmediatamente al pellizcar — bloquea dwell de botones
+        window.isHandScrolling = true;
+        scrollActive = true;
+        clearTimeout(clearScrollTimer);
+
         if (prevY !== null && menuScrollRef.current) {
           const delta = (cursor.y - prevY) * 2.2;
-          if (Math.abs(delta) > 1.5) {
-            menuScrollRef.current.scrollTop += delta;
-            scrollActive = true;
-            window.isHandScrolling = true;
-            clearTimeout(clearScrollTimer);
-          }
+          menuScrollRef.current.scrollTop += delta;
         }
         prevY = cursor.y;
       } else {
         prevY = null;
         if (scrollActive) {
           scrollActive = false;
-          clearScrollTimer = setTimeout(() => { window.isHandScrolling = false; }, 250);
+          // Pequeño retraso para no activar botón justo al soltar el pellizco
+          clearScrollTimer = setTimeout(() => { window.isHandScrolling = false; }, 300);
         }
       }
       rafId = requestAnimationFrame(tick);

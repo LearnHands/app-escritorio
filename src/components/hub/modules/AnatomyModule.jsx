@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
+import React, { useState, useEffect, useRef, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Heart, X, Info, RotateCcw, Layers } from 'lucide-react';
+import { Heart, X } from 'lucide-react';
 import HandButton from '../HandButton';
 
 const SYSTEMS = [
@@ -11,7 +11,6 @@ const SYSTEMS = [
   { id: 'nervous',    label: 'Nervioso',       emoji: '🧠', color: '#bb88ff' },
 ];
 
-// Body regions with info per system
 const REGIONS = [
   {
     id: 'brain', label: 'Cerebro', y: 0.08, x: 0.5, r: 0.07,
@@ -114,10 +113,13 @@ const FACTS = [
   'Los huesos son 5 veces más resistentes que el acero del mismo peso.',
 ];
 
+const DWELL_MS = 900;
+
 const AnatomyModule = memo(({ addPoints }) => {
   const [systemIdx, setSystemIdx] = useState(0);
   const [selectedRegion, setSelectedRegion] = useState(null);
   const [hoveredRegion, setHoveredRegion] = useState(null);
+  const [dwellData, setDwellData] = useState({ regionId: null, progress: 0 });
   const [explored, setExplored] = useState(new Set());
   const [showIntro, setShowIntro] = useState(true);
   const [factIdx] = useState(() => Math.floor(Math.random() * FACTS.length));
@@ -125,44 +127,94 @@ const AnatomyModule = memo(({ addPoints }) => {
   const addPointsRef = useRef(addPoints);
   addPointsRef.current = addPoints;
 
-  const containerRef = useRef(null);
+  // Attach to the SVG element — getBoundingClientRect gives accurate pixel coords
+  const svgRef = useRef(null);
+
+  // Stable selection via ref so RAF closure never goes stale
+  const selectRegionRef = useRef(null);
+  selectRegionRef.current = (reg) => {
+    setSelectedRegion(reg);
+    setExplored(prev => {
+      if (prev.has(reg.id)) return prev;
+      addPointsRef.current(15);
+      const ns = new Set(prev);
+      ns.add(reg.id);
+      return ns;
+    });
+  };
 
   const system = SYSTEMS[systemIdx];
 
-  // Hand cursor tracking → hover regions
+  // Hand cursor → hover + dwell activation (no mouse click needed)
   useEffect(() => {
     let frameId;
-    const loop = () => {
-      const container = containerRef.current;
-      if (!container) { frameId = requestAnimationFrame(loop); return; }
-      const rect = container.getBoundingClientRect();
+    let lastTime = performance.now();
+    let dwellId = null;
+    let dwellProgress = 0;
+    let mustLeaveId = null; // anti-double-fire: cursor must leave region after selection
+
+    const loop = (now) => {
+      const dt = Math.min(now - lastTime, 80);
+      lastTime = now;
+
+      const svgEl = svgRef.current;
+      if (!svgEl) { frameId = requestAnimationFrame(loop); return; }
+
+      // Use the SVG's own bounding rect — accurate regardless of flex centering
+      const rect = svgEl.getBoundingClientRect();
       const hand = window.latestHandData;
+
+      let found = null;
       if (hand?.cursors?.[0]?.isVisible) {
         const cx = hand.cursors[0].x;
         const cy = hand.cursors[0].y;
-        const normX = (cx - rect.left) / rect.width;
-        const normY = (cy - rect.top) / rect.height;
-        let found = null;
-        for (const reg of REGIONS) {
-          const dx = normX - reg.x;
-          const dy = normY - reg.y;
-          if (Math.sqrt(dx * dx + dy * dy) < reg.r + 0.02) { found = reg; break; }
+        // Only process cursor if it's actually inside the SVG area
+        if (cx >= rect.left && cx <= rect.right && cy >= rect.top && cy <= rect.bottom) {
+          const normX = (cx - rect.left) / rect.width;
+          const normY = (cy - rect.top) / rect.height;
+          for (const reg of REGIONS) {
+            const dx = normX - reg.x;
+            const dy = normY - reg.y;
+            // Generous hit radius: reg.r + 0.05 in normalised units
+            if (Math.sqrt(dx * dx + dy * dy) < reg.r + 0.05) { found = reg; break; }
+          }
         }
-        setHoveredRegion(found?.id || null);
       }
+
+      setHoveredRegion(found?.id ?? null);
+
+      if (found) {
+        // Must-leave check: cursor still on last-selected region, skip dwell
+        if (found.id === mustLeaveId) {
+          dwellId = null;
+          dwellProgress = 0;
+        } else if (dwellId === found.id) {
+          dwellProgress = Math.min(dwellProgress + dt / DWELL_MS, 1);
+          if (dwellProgress >= 1) {
+            selectRegionRef.current(found);
+            dwellProgress = 0;
+            dwellId = null;
+            mustLeaveId = found.id; // require leaving before re-selecting same region
+          }
+        } else {
+          // New region hovered
+          dwellId = found.id;
+          dwellProgress = 0;
+        }
+      } else {
+        // Cursor left all regions — clear must-leave so any region can be re-selected
+        mustLeaveId = null;
+        dwellId = null;
+        dwellProgress = 0;
+      }
+
+      setDwellData({ regionId: dwellId, progress: dwellProgress });
       frameId = requestAnimationFrame(loop);
     };
+
     frameId = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(frameId);
   }, []);
-
-  const selectRegion = useCallback((reg) => {
-    setSelectedRegion(reg);
-    if (!explored.has(reg.id)) {
-      setExplored(prev => { const ns = new Set(prev); ns.add(reg.id); return ns; });
-      addPointsRef.current(15);
-    }
-  }, [explored]);
 
   const currentInfo = selectedRegion ? selectedRegion.info[system.id] : null;
   const systemColor = system.color;
@@ -184,10 +236,14 @@ const AnatomyModule = memo(({ addPoints }) => {
       <div className="flex-1 flex gap-4 pt-16 pb-2 px-5">
 
         {/* Body diagram */}
-        <div ref={containerRef} className="flex-1 relative flex items-center justify-center">
-          {/* Silhouette body */}
-          <svg viewBox="0 0 200 500" className="h-full max-h-full" style={{ maxWidth: 200 }}>
-            {/* Simple body silhouette */}
+        <div className="flex-1 relative flex items-center justify-center">
+          <svg
+            ref={svgRef}
+            viewBox="0 0 200 500"
+            className="h-full max-h-full"
+            style={{ maxWidth: 200 }}
+          >
+            {/* Body silhouette */}
             <ellipse cx="100" cy="45" rx="32" ry="36" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.15)" strokeWidth="1.5" />
             <rect x="68" y="80" width="64" height="5" rx="3" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
             <rect x="72" y="84" width="56" height="110" rx="8" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.15)" strokeWidth="1.5" />
@@ -197,23 +253,59 @@ const AnatomyModule = memo(({ addPoints }) => {
             <rect x="74" y="284" width="22" height="140" rx="10" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.10)" strokeWidth="1" />
             <rect x="104" y="284" width="22" height="140" rx="10" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.10)" strokeWidth="1" />
 
-            {/* Region hotspots */}
+            {/* Region hotspots — dwell activated, no click */}
             {REGIONS.map(reg => {
               const px = reg.x * 200;
               const py = reg.y * 500;
               const pr = reg.r * 200;
-              const isHovered = hoveredRegion === reg.id;
+              const isHovered  = hoveredRegion === reg.id;
               const isSelected = selectedRegion?.id === reg.id;
+              const isDwelling = dwellData.regionId === reg.id && dwellData.progress > 0;
               const alpha = isSelected ? 0.6 : isHovered ? 0.45 : 0.2;
+              const ringR = pr + 5;
+              const circumference = 2 * Math.PI * ringR;
+
               return (
-                <g key={reg.id} onClick={() => selectRegion(reg)} style={{ cursor: 'pointer' }}>
-                  <circle cx={px} cy={py} r={pr}
+                <g key={reg.id}>
+                  {/* Main hotspot circle */}
+                  <circle
+                    cx={px} cy={py} r={pr}
                     fill={systemColor + Math.floor(alpha * 255).toString(16).padStart(2, '0')}
                     stroke={systemColor}
                     strokeWidth={isSelected ? 2.5 : isHovered ? 2 : 1}
-                    style={{ filter: isSelected ? `drop-shadow(0 0 8px ${systemColor})` : isHovered ? `drop-shadow(0 0 4px ${systemColor})` : 'none' }}
+                    style={{
+                      filter: isSelected
+                        ? `drop-shadow(0 0 10px ${systemColor})`
+                        : isHovered
+                        ? `drop-shadow(0 0 5px ${systemColor})`
+                        : 'none',
+                      transition: 'r 0.1s',
+                    }}
                   />
-                  <text x={px} y={py + 1.5} textAnchor="middle" dominantBaseline="middle" fontSize={pr * 0.8} style={{ pointerEvents: 'none' }}>
+                  {/* Dwell progress ring — white arc filling clockwise */}
+                  {isDwelling && (
+                    <circle
+                      cx={px} cy={py}
+                      r={ringR}
+                      fill="none"
+                      stroke="rgba(255,255,255,0.9)"
+                      strokeWidth="3"
+                      strokeLinecap="round"
+                      strokeDasharray={`${circumference}`}
+                      strokeDashoffset={`${circumference * (1 - dwellData.progress)}`}
+                      style={{
+                        transform: `rotate(-90deg)`,
+                        transformOrigin: `${px}px ${py}px`,
+                      }}
+                    />
+                  )}
+                  {/* Emoji label */}
+                  <text
+                    x={px} y={py + 1.5}
+                    textAnchor="middle" dominantBaseline="middle"
+                    fontSize={pr * 0.8}
+                    style={{ pointerEvents: 'none', userSelect: 'none' }}
+                  >
                     {reg.emoji}
                   </text>
                 </g>
@@ -221,11 +313,11 @@ const AnatomyModule = memo(({ addPoints }) => {
             })}
           </svg>
 
-          {/* Hover label */}
+          {/* Hover tooltip */}
           {hoveredRegion && !selectedRegion && (
             <div className="absolute bottom-8 left-1/2 -translate-x-1/2 glass-dark px-4 py-2 rounded-xl border border-white/10 pointer-events-none">
               <p className="text-[10px] font-black text-white/80">
-                {REGIONS.find(r => r.id === hoveredRegion)?.label} — toca para explorar
+                {REGIONS.find(r => r.id === hoveredRegion)?.label} — mantén la mano para explorar
               </p>
             </div>
           )}
@@ -233,9 +325,10 @@ const AnatomyModule = memo(({ addPoints }) => {
 
         {/* Center: info panel */}
         <div className="w-72 flex flex-col gap-3 flex-shrink-0">
-          {/* Info card */}
-          <div className={`glass-dark rounded-2xl border p-5 flex-1 flex flex-col gap-3 transition-colors ${selectedRegion ? 'border-white/20' : 'border-white/10'}`}
-            style={{ borderColor: selectedRegion ? systemColor + '55' : undefined }}>
+          <div
+            className={`glass-dark rounded-2xl border p-5 flex-1 flex flex-col gap-3 transition-colors ${selectedRegion ? 'border-white/20' : 'border-white/10'}`}
+            style={{ borderColor: selectedRegion ? systemColor + '55' : undefined }}
+          >
             {selectedRegion && currentInfo ? (
               <>
                 <div className="flex items-center gap-3">
@@ -247,14 +340,20 @@ const AnatomyModule = memo(({ addPoints }) => {
                   </div>
                 </div>
                 <p className="text-[12px] text-white/70 leading-relaxed flex-1">{currentInfo.desc}</p>
-                <HandButton onClick={() => setSelectedRegion(null)} dwellMs={700} variant="default" className="px-4 py-2 text-[10px] !bg-white/5 !border-white/10 self-start">
+                <HandButton
+                  onClick={() => setSelectedRegion(null)}
+                  dwellMs={700} graceMs={400} variant="default"
+                  className="px-4 py-2 text-[10px] !bg-white/5 !border-white/10 self-start"
+                >
                   <X size={11} /> Deseleccionar
                 </HandButton>
               </>
             ) : (
               <div className="flex flex-col items-center justify-center h-full gap-3 text-center">
                 <Heart size={32} className="text-white/20" />
-                <p className="text-[10px] font-black uppercase tracking-widest text-white/30">Toca una región del cuerpo para ver información</p>
+                <p className="text-[10px] font-black uppercase tracking-widest text-white/30">
+                  Apunta una región del cuerpo y mantén la mano para ver información
+                </p>
                 <div className="mt-2 px-4 py-3 rounded-xl bg-white/5 border border-white/10">
                   <p className="text-[9px] text-white/50 italic">💡 {FACTS[factIdx]}</p>
                 </div>
@@ -267,9 +366,11 @@ const AnatomyModule = memo(({ addPoints }) => {
             <p className="text-[8px] font-black uppercase tracking-widest text-white/40 mb-2">Regiones exploradas</p>
             <div className="flex flex-wrap gap-1.5">
               {REGIONS.map(reg => (
-                <div key={reg.id}
+                <div
+                  key={reg.id}
                   className={`px-2 py-1 rounded-lg text-[8px] font-black ${explored.has(reg.id) ? 'border bg-white/8' : 'bg-white/3 border border-white/10 opacity-40'}`}
-                  style={{ borderColor: explored.has(reg.id) ? systemColor + '88' : undefined }}>
+                  style={{ borderColor: explored.has(reg.id) ? systemColor + '88' : undefined }}
+                >
                   {reg.emoji} {reg.label}
                 </div>
               ))}
@@ -281,8 +382,11 @@ const AnatomyModule = memo(({ addPoints }) => {
         <div className="w-40 flex flex-col gap-2 flex-shrink-0">
           <div className="text-[8px] font-black uppercase tracking-widest text-white/40 text-center mb-1">Sistema</div>
           {SYSTEMS.map((sys, i) => (
-            <HandButton key={sys.id} onClick={() => { setSystemIdx(i); setSelectedRegion(null); }} dwellMs={750}
-              variant={i === systemIdx ? 'default' : 'default'}
+            <HandButton
+              key={sys.id}
+              onClick={() => { setSystemIdx(i); setSelectedRegion(null); }}
+              dwellMs={750}
+              variant="default"
               className={`px-3 py-3 text-[10px] !rounded-xl flex-col gap-1 h-auto
                 ${i === systemIdx ? '!border-2' : '!bg-white/5 !border-white/10 opacity-60'}`}
               style={i === systemIdx ? { borderColor: sys.color, boxShadow: `0 0 12px ${sys.color}44` } : {}}
@@ -294,7 +398,7 @@ const AnatomyModule = memo(({ addPoints }) => {
         </div>
       </div>
 
-      {/* Intro */}
+      {/* Intro overlay */}
       <AnimatePresence>
         {showIntro && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -304,7 +408,7 @@ const AnatomyModule = memo(({ addPoints }) => {
               <div className="text-7xl">🫀</div>
               <h2 className="text-3xl font-display font-black italic uppercase tracking-tight text-gradient">Anatomía Interactiva</h2>
               <p className="text-[12px] text-white/60 leading-relaxed">
-                Apunta con tu mano a las partes del cuerpo y tócalas para descubrir información.
+                Apunta con tu mano a las partes del cuerpo y <span className="text-white/90 font-black">mantén el cursor</span> sobre ellas para descubrir información.
                 Cambia de <span className="text-red-400 font-black">sistema</span> (esquelético, muscular, circulatorio…) para ver el cuerpo desde distintas perspectivas.
               </p>
               <HandButton onClick={() => setShowIntro(false)} dwellMs={900} graceMs={600} variant="red" className="px-10 py-4 text-sm">
