@@ -48,6 +48,18 @@ const drawHand = (ctx, landmarks, color, w, h) => {
 const LayeredEngine = ({ children, videoRef, isLoaded, error, transparent = false }) => {
   const canvasRef = useRef(null);
 
+  // Block ALL mouse and keyboard input — only hand gestures drive this system
+  useEffect(() => {
+    const block = (e) => { e.preventDefault(); e.stopImmediatePropagation(); };
+    const blocked = ['mousedown','mouseup','click','dblclick','contextmenu','wheel','keydown','keyup','keypress'];
+    blocked.forEach(ev => document.addEventListener(ev, block, { capture: true, passive: false }));
+    document.body.style.cursor = 'none';
+    return () => {
+      blocked.forEach(ev => document.removeEventListener(ev, block, { capture: true }));
+      document.body.style.cursor = '';
+    };
+  }, []);
+
   useEffect(() => {
     let animId;
 

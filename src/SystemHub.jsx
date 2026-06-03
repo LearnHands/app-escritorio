@@ -44,6 +44,7 @@ const SystemHub = ({ onExit }) => {
   const [score, setScore] = useState(() => parseInt(localStorage.getItem(SCORE_KEY) || '0', 10));
   const [menuLocked, setMenuLocked] = useState(false);
   const menuLockTimerRef = useRef(null);
+  const menuScrollRef = useRef(null);
 
   const videoRef = useRef(null);
   const { isLoaded, initMediaPipe, error } = useMediaPipe();
@@ -73,6 +74,50 @@ const SystemHub = ({ onExit }) => {
     clearTimeout(menuLockTimerRef.current);
     menuLockTimerRef.current = setTimeout(() => setMenuLocked(false), MENU_LOCK_MS);
   };
+
+  // Pinch-to-scroll: pellizcar índice+pulgar y arrastrar desplaza el menú
+  useEffect(() => {
+    if (view !== 'MENU') {
+      window.isHandScrolling = false;
+      return;
+    }
+    let rafId;
+    let prevY = null;
+    let scrollActive = false;
+    let clearScrollTimer = null;
+
+    const tick = () => {
+      const data = window.latestHandData || {};
+      const cursor = data.cursors?.[0];
+      const gesture = data.gestures?.[0];
+
+      if (gesture?.isPinching && cursor?.isVisible) {
+        if (prevY !== null && menuScrollRef.current) {
+          const delta = (cursor.y - prevY) * 2.2;
+          if (Math.abs(delta) > 1.5) {
+            menuScrollRef.current.scrollTop += delta;
+            scrollActive = true;
+            window.isHandScrolling = true;
+            clearTimeout(clearScrollTimer);
+          }
+        }
+        prevY = cursor.y;
+      } else {
+        prevY = null;
+        if (scrollActive) {
+          scrollActive = false;
+          clearScrollTimer = setTimeout(() => { window.isHandScrolling = false; }, 250);
+        }
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+
+    rafId = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(rafId);
+      window.isHandScrolling = false;
+    };
+  }, [view]);
 
   return (
     <LayeredEngine videoRef={videoRef} isLoaded={isLoaded} error={error} transparent={!(view === 'GAME' && currentGame === 'PIZARRA')}>
@@ -108,9 +153,12 @@ const SystemHub = ({ onExit }) => {
         )}
 
         {view === 'MENU' && (
-          <motion.div key="menu" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 1.1 }} className="flex-1 flex flex-col items-center justify-center p-12">
-            <div className="absolute top-12 left-12 flex items-center gap-8">
-              <HandButton onClick={() => setView('HOME')} className="p-4" variant="red" dwellMs={600}><ArrowLeft /></HandButton>
+          <motion.div key="menu" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 1.1 }} className="flex-1 flex flex-col items-center pt-28 pb-4 px-12 overflow-hidden">
+            {/* Header — absolute so it doesn't consume flex space */}
+            <div className="absolute top-12 left-12 flex items-center gap-8 z-10">
+              <HandButton onClick={() => setView('HOME')} className="px-6 py-4 text-sm" variant="red" dwellMs={600}>
+                <ArrowLeft size={20} /> Volver
+              </HandButton>
               <img src={puceLogo} alt="PUCE Logo" className="h-16 w-auto drop-shadow-2xl" />
             </div>
 
@@ -119,7 +167,7 @@ const SystemHub = ({ onExit }) => {
               {menuLocked && (
                 <motion.div
                   initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-                  className="absolute top-12 right-12 flex items-center gap-2 bg-white/5 border border-white/10 px-4 py-2 rounded-2xl"
+                  className="absolute top-12 right-12 z-10 flex items-center gap-2 bg-white/5 border border-white/10 px-4 py-2 rounded-2xl"
                 >
                   <Lock size={12} className="text-white/40" />
                   <span className="text-[10px] font-black uppercase tracking-widest text-white/40">Preparando…</span>
@@ -127,9 +175,15 @@ const SystemHub = ({ onExit }) => {
               )}
             </AnimatePresence>
 
-            <h2 className="text-4xl md:text-5xl font-display font-black mb-10 italic text-gradient tracking-tighter uppercase underline decoration-purple-500/30 decoration-8 underline-offset-[16px]">Módulos</h2>
+            {/* Title — fixed height */}
+            <h2 className="shrink-0 text-4xl md:text-5xl font-display font-black mb-6 italic text-gradient tracking-tighter uppercase underline decoration-purple-500/30 decoration-8 underline-offset-[16px]">Módulos</h2>
 
-            <div className="w-full max-w-6xl flex flex-col gap-10 overflow-y-auto px-2">
+            {/* Scrollable area — flex-1 + min-h-0 permite que overflow-y-auto funcione */}
+            <div
+              ref={menuScrollRef}
+              className="w-full max-w-6xl flex flex-col gap-10 overflow-y-auto px-2 flex-1 min-h-0"
+              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+            >
               {/* ── Sección: Aprende (educativos) ── */}
               <div>
                 <SectionHeader icon={<GraduationCap size={16} />} title="Aprende" subtitle="Módulos educativos" color="emerald" />
@@ -149,7 +203,7 @@ const SystemHub = ({ onExit }) => {
               </div>
 
               {/* ── Sección: Diversión (juegos) ── */}
-              <div>
+              <div className="pb-4">
                 <SectionHeader icon={<Joystick size={16} />} title="Diversión" subtitle="Juegos interactivos" color="orange" />
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-8 justify-items-center">
                   <MenuCard icon={<Palette />}    title="Pizarra"        color="purple"  locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('PIZARRA'); }} />
@@ -159,6 +213,13 @@ const SystemHub = ({ onExit }) => {
                   <MenuCard icon={<Gamepad2 />}   title="Balls Crush"    color="orange"  locked={menuLocked} onSelect={() => { setView('GAME'); setCurrentGame('BRICKS'); }} />
                 </div>
               </div>
+            </div>
+
+            {/* Hint de scroll */}
+            <div className="shrink-0 mt-3 flex items-center gap-2 text-white/25 text-[9px] font-black uppercase tracking-widest">
+              <span>🤏</span>
+              <span>Pellizca índice + pulgar y arrastra para desplazar</span>
+              <span>🤏</span>
             </div>
           </motion.div>
         )}
