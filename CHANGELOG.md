@@ -1,46 +1,27 @@
 # Registro de cambios — LearnHands
 
-## [2.3.0] — 2026-06-03
+## [3.0.0] — 2026-06-03
 
-### 🆕 Nuevo módulo — English
-- Juego de oraciones en inglés con burbujas de palabras que caen
-- **Nivel 1 (Básico):** 1 hueco — verbos simples y adjetivos
-- **Nivel 2 (Intermedio):** 1 hueco — tiempos pasados y oraciones largas
-- **Nivel 3 (Avanzado):** 2 huecos por oración — voz pasiva, perfecto continuo y condicionales
-- Mecánica de snap gestual: acercar la burbuja al hueco correcto la engancha automáticamente sin necesidad de soltar
-- Al completar: reproduce la oración en voz alta (Web Speech API, `en-US`) y muestra la traducción al español
-- Botones de subir/bajar nivel con HandButton (dwell + pinza)
-- Puntos escalables: 60 / 100 / 300 pts según nivel y número de huecos
+### Nuevos módulos educativos
 
-### 🔬 Laboratorio de Química — mejoras mayores
-- **Dos secciones visuales** en la paleta: *Elementos base* (16 elementos de la tabla periódica: H, O, N, C, S, Na, Cl, Fe, Cu, Mg, Ca, K, Zn, Al, Si, P) y *Reactivos compuestos* (NaHCO₃, CH₃COOH, H₂O₂, NaOH)
-- **Recetario ampliado**: de 13 a 27 reacciones, incluyendo óxidos, sales, ácidos, compuestos orgánicos y reacciones domésticas
-- **Scroll gestual en el Recetario**: mover la mano sobre la lista desplaza el contenido sin mouse
-- Nombres de elementos con tamaño de fuente adaptativo para evitar desbordamiento en cards de 90 px
-- Botones de acción (Reaccionar, Vaciar, Recetario, Tutorial) con `hitMargin={4}` para eliminar activaciones accidentales simultáneas
+- **Circuitos eléctricos**: Diagrama interactivo con 5 niveles (serie, serie doble, paralelo, resistencias, mixto). Activa interruptores con la mano para completar el circuito y encender el LED; animación de glow en cables activos.
+- **Movimiento de átomos**: Simulación de partículas que transita entre sólido, líquido y gas según la temperatura. La altura de la mano controla la temperatura (0–100 °C). Tres sustancias disponibles: agua, hierro y oxígeno.
+- **Bloques de programación gestual**: Robot guiado por secuencias de comandos gestuales sobre una cuadrícula 10×7 con obstáculos. Incluye modificador de repetición (×1/×2/×3) y 5 niveles de dificultad creciente.
+- **Contabilidad gestual**: Libro de cuentas interactivo con 12 transacciones, balance en tiempo real, barra de salud financiera y 4 consejos de educación financiera. Saldo inicial: $500.
+- **Líneas de tiempo — Historia**: Juego de ordenamiento cronológico con 12 eventos históricos globales y de Ecuador, distribuidos en 4 rondas de 4 eventos cada una.
+- **Anatomía interactiva**: Silueta corporal SVG con 8 regiones exploradas por dwell gestual. Cinco sistemas anatómicos (esquelético, muscular, circulatorio, digestivo, nervioso) con 40 tarjetas de información únicas. El anillo de progreso visual indica cuánto falta para seleccionar una región.
 
-### 🔤 Sílabas — modo inglés y pronunciación
-- **Toggle de idioma** con HandButton (dwell + pinza): cambia entre 🇪🇸 Español y 🇺🇸 Inglés
-- 12 palabras en inglés con división silábica: RABBIT, WINDOW, FLOWER, PENCIL, TIGER, BUTTER, MONKEY, MUSIC, UMBRELLA, TOGETHER, REMEMBER, COMPUTER
-- Al completar una palabra: pronunciación automática vía Web Speech API (`en-US` / `es-ES` según idioma activo)
-- Win overlay muestra el desglose animado de sílabas (`GA · TO`) con animación escalonada
-- UI bilingüe: etiquetas de slots, instrucción y texto de victoria cambian con el idioma
+### Gestos y control
 
-### 🎯 Feedback pedagógico (todos los módulos)
-- **SyllablesModule:** al soltar una sílaba incorrecta → toast `"X" no va en esa posición — busca "Y"`
-- **EnglishModule:** al soltar palabra incorrecta → toast `"hint" en inglés → ANSWER`
-- **MathAbacusModule:** al acertar → toast `3 + 5 + 7 = 15 ✓`; al pasarse → toast `Suma: 18 — necesitas exactamente 15`
-- Toasts con color semántico: verde (correcto), ámbar (pista), rojo (error), duración 2.2 s, animación de entrada/salida
+- **Sistema 100 % hands-only**: El mouse y el teclado están completamente bloqueados a nivel global. La aplicación sólo responde al seguimiento de manos de MediaPipe.
+- **Pellizco para desplazar el menú**: Juntar el dedo índice y el pulgar (gesto de pinza) activa el modo arrastre. Mover la mano mientras se pellizca desplaza la lista de módulos. Al soltar el pellizco se reanuda la activación normal de botones (300 ms de gracia).
+- **Menú corregido**: El contenedor de módulos ahora hace scroll real gracias a la corrección de `flex-1 + min-h-0`. Los 16 módulos (11 educativos + 5 de juego) son accesibles sin que ninguno quede oculto.
 
-### ⚡ Rendimiento
-- **Sistema Solar:** supresión de 450 ms en asteroides tras cerrar tarjeta informativa (evita spike de GPU al reanudar 150 partículas)
-- **Puzzle:** eliminado `backdrop-blur-md` del overlay de victoria; añadido buffer de 220 ms al inicio de nivel para estabilizar el DOM tras re-montaje
-- **Puzzle:** badge de progreso `🧩 N/total` en el header, cambia a cyan al colocar la primera pieza y a verde al completar
+### Correcciones
 
-### 🐛 Correcciones
-- **EnglishModule:** burbuja quedaba congelada (`isGrabbed: true`) si `getElementById` devolvía `null` durante re-render — ahora siempre se libera
-- **EnglishModule:** zona de detección de drop ampliada de 10 % a 18 % de pantalla para facilitar la interacción gestual
-- **SyllablesModule / EnglishModule:** patrón `wordBankRef` evita closures stale en efectos con `[]` al cambiar de idioma dinámicamente
+- **Anatomía — detección de órganos**: El módulo usaba el div padre para normalizar coordenadas; ahora usa el bounding rect del propio elemento `<svg>`, eliminando el desfase de posición. La selección por click fue reemplazada por dwell gestual con anillo de progreso visible.
+
+---
 
 ## [2.2.0] — 2026-06-02
 

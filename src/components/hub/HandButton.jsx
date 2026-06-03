@@ -68,6 +68,12 @@ const HandButton = ({
       lastRunRef.current = now;
 
       if (cooldownRef.current) return;
+      // Pause dwell while hand-scroll is active (pinch-drag in menu)
+      if (window.isHandScrolling) {
+        if (isHoveredRef.current) { isHoveredRef.current = false; setIsHovered(false); }
+        if (progressRef.current !== 0) { progressRef.current = 0; setProgress(0); }
+        return;
+      }
       const btn = buttonRef.current;
       if (!btn) return;
 
