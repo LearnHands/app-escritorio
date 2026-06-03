@@ -121,6 +121,7 @@ const SolarSystemModule = memo(({ addPoints }) => {
     stars:     null,
     asteroids: null,
     visited:   new Set(),
+    cardCloseTime: -1000,             // ts when card last closed (suppresses asteroid spike)
   });
 
   useEffect(() => {
@@ -162,6 +163,7 @@ const SolarSystemModule = memo(({ addPoints }) => {
     const s=stateRef.current;
     s.selectedPlanet=null; s.infoPage=0; s.paused=false;
     s.cardDwellTarget=null; s.cardDwellTime=[0,0];
+    s.cardCloseTime=performance.now();
     cardUISyncRef.current={ btnId:null, pct:0 };
     setSelectedInfo(null); setPaused(false);
     setCardUI({ cx:0, cy:0, cvis:false, btnId:null, pct:0 });
@@ -230,8 +232,8 @@ const SolarSystemModule = memo(({ addPoints }) => {
           ctx.stroke();
         });
 
-        // Asteroid belt (se omite con la tarjeta abierta para ahorrar GPU)
-        if(s.asteroids && !cardOpen){
+        // Asteroid belt (se omite con la tarjeta abierta y durante 450ms tras cerrarla para evitar spike)
+        if(s.asteroids && !cardOpen && (ts - s.cardCloseTime) > 450){
           const br=260*vs;
           if(circleOnScreen(ox,oy,br+60*vs,W,H,0)){
             s.asteroids.forEach(a=>{
@@ -568,15 +570,16 @@ const SolarSystemModule = memo(({ addPoints }) => {
           <>
             <motion.div
               initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
+              transition={{duration:0.15}}
               className="absolute inset-0 z-30 bg-black/70"
             />
 
             <motion.div
               id="solar-info-card"
-              initial={{opacity:0,scale:0.88,y:24}}
+              initial={{opacity:0,scale:0.9,y:20}}
               animate={{opacity:1,scale:1,y:0}}
-              exit={{opacity:0,scale:0.88,y:24}}
-              transition={{type:'spring',stiffness:280,damping:26}}
+              exit={{opacity:0,scale:0.96,y:8}}
+              transition={{type:'tween',duration:0.18,ease:'easeOut'}}
               className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-40 w-[92vw] max-w-[520px] rounded-[36px] border border-white/10 overflow-hidden"
               style={{
                 background:'linear-gradient(145deg,rgba(10,10,32,0.96),rgba(5,5,20,0.97))',
