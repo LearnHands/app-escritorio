@@ -86,6 +86,9 @@ const SolarSystemModule = memo(({ addPoints }) => {
   const [selectedInfo, setSelectedInfo] = useState(null);
   const [paused,   setPaused]   = useState(false);
   const [visited,  setVisited]  = useState(new Set());
+  // UI de la tarjeta (cursor + progreso dwell) renderizada en DOM por encima de la tarjeta
+  const [cardUI, setCardUI] = useState({ cx: 0, cy: 0, cvis: false, btnId: null, pct: 0 });
+  const cardUISyncRef = useRef({ btnId: null, pct: 0 });
 
   const addPointsRef = useRef(addPoints);
   addPointsRef.current = addPoints;
@@ -159,7 +162,9 @@ const SolarSystemModule = memo(({ addPoints }) => {
     const s=stateRef.current;
     s.selectedPlanet=null; s.infoPage=0; s.paused=false;
     s.cardDwellTarget=null; s.cardDwellTime=[0,0];
+    cardUISyncRef.current={ btnId:null, pct:0 };
     setSelectedInfo(null); setPaused(false);
+    setCardUI({ cx:0, cy:0, cvis:false, btnId:null, pct:0 });
   },[]);
 
   // ── RAF loop ───────────────────────────────────────────────────────────────
@@ -184,6 +189,7 @@ const SolarSystemModule = memo(({ addPoints }) => {
         const W=canvas.width, H=canvas.height;
 
         if(!s.paused) s.time+=dt;
+        const cardOpen=!!s.selectedPlanet;
 
         const LR=0.10;
         s.viewScale+=(s.targetScale-s.viewScale)*LR;
@@ -224,8 +230,8 @@ const SolarSystemModule = memo(({ addPoints }) => {
           ctx.stroke();
         });
 
-        // Asteroid belt
-        if(s.asteroids){
+        // Asteroid belt (se omite con la tarjeta abierta para ahorrar GPU)
+        if(s.asteroids && !cardOpen){
           const br=260*vs;
           if(circleOnScreen(ox,oy,br+60*vs,W,H,0)){
             s.asteroids.forEach(a=>{
@@ -322,8 +328,8 @@ const SolarSystemModule = memo(({ addPoints }) => {
 
         // ── Hand processing ──────────────────────────────────────────────────
         const {cursors=[],gestures=[]}=window.latestHandData||{};
-        const cardOpen=!!s.selectedPlanet;
-        const cardEl=cardOpen?document.getElementById('solar-info-card'):null;
+        // Acumulador de UI de tarjeta (se vuelca a React tras el bucle)
+        let cardFrame = cardOpen ? { cx:0, cy:0, cvis:false, btnId:null, pct:0 } : null;
 
         for(let i=0;i<2;i++){
           const cursor=cursors[i];
@@ -354,24 +360,17 @@ const SolarSystemModule = memo(({ addPoints }) => {
             s.hoverDwell[i]=0; s.hoverDwellTarget[i]=null;
             if(s.movementHand===i) s.movementHand=-1;
             if(s.interactHand===i)  s.interactHand=-1;
+            s.wasPinching[i]=isPinching;
+            s.prevCursorX[i]=cPx; s.prevCursorY[i]=cPy;
 
-            // Grace period for fly-in animation
+            // Marca este cursor como visible para el render DOM
+            if(cardFrame && !cardFrame.cvis){ cardFrame.cx=cPx; cardFrame.cy=cPy; cardFrame.cvis=true; }
+
+            // Periodo de gracia para la animación de entrada
             const cardAge=performance.now()-s.cardOpenTime;
-            if(cardAge < 150){
-              s.wasPinching[i]=isPinching;
-              s.prevCursorX[i]=cPx; s.prevCursorY[i]=cPy;
-              continue;
-            }
+            if(cardAge < 250){ s.cardDwellTime[i]=0; continue; }
 
-            // Pinch OUTSIDE card = close (fallback)
-            if(isPinching&&!s.wasPinching[i]&&cardEl&&!hitEl(cPx,cPy,cardEl,8)){
-              closeInfo();
-              s.wasPinching[i]=isPinching;
-              s.prevCursorX[i]=cPx; s.prevCursorY[i]=cPy;
-              continue;
-            }
-
-            // ── Dwell on card buttons ────────────────────────────────────────
+            // ── Dwell sobre botones de la tarjeta (sin pellizco) ─────────────
             const CARD_BTNS=[
               {id:'solar-close-btn', fn: closeInfo},
               {id:'solar-prev-btn',  fn: ()=>goInfoPage(-1)},
@@ -385,19 +384,24 @@ const SolarSystemModule = memo(({ addPoints }) => {
             let hBtn=null;
             for(const btn of CARD_BTNS){
               const el=document.getElementById(btn.id);
-              if(el&&hitEl(cPx,cPy,el,20)){hBtn=btn;break;}
+              if(el&&hitEl(cPx,cPy,el,18)){hBtn=btn;break;}
             }
 
             if(hBtn){
               if(s.cardDwellTarget===hBtn.id){
                 s.cardDwellTime[i]+=dt;
+                // Vuelca progreso al acumulador para el render DOM
+                if(cardFrame){
+                  cardFrame.cx=cPx; cardFrame.cy=cPy; cardFrame.cvis=true;
+                  cardFrame.btnId=hBtn.id;
+                  cardFrame.pct=Math.max(cardFrame.pct, Math.min(1, s.cardDwellTime[i]/CDWELL_S));
+                }
                 if(s.cardDwellTime[i]>=CDWELL_S){
                   const fn=hBtn.fn;
                   s.cardDwellTime[i]=0; s.cardDwellTarget=null;
-                  fn(); // fire action — may unmount buttons, do last
+                  fn(); // dispara acción (puede desmontar botones → al final)
                 }
               } else {
-                // New button — reset both hands
                 s.cardDwellTarget=hBtn.id;
                 s.cardDwellTime[0]=0; s.cardDwellTime[1]=0;
               }
@@ -406,37 +410,6 @@ const SolarSystemModule = memo(({ addPoints }) => {
               if(s.cardDwellTime.every(t=>t<=0)) s.cardDwellTarget=null;
             }
 
-            // Draw dwell arc over button
-            if(hBtn&&s.cardDwellTime[i]>0){
-              const el=document.getElementById(hBtn.id);
-              if(el){
-                const r=el.getBoundingClientRect();
-                const bx=r.left+r.width/2, by=r.top+r.height/2;
-                const sz=Math.max(r.width,r.height)/2+12;
-                const prog=Math.min(1,s.cardDwellTime[i]/CDWELL_S);
-                ctx.save();
-                ctx.beginPath(); ctx.arc(bx,by,sz,0,Math.PI*2);
-                ctx.strokeStyle='rgba(255,255,255,0.10)'; ctx.lineWidth=3.5; ctx.stroke();
-                ctx.beginPath();
-                ctx.arc(bx,by,sz,-Math.PI/2,-Math.PI/2+prog*Math.PI*2);
-                ctx.strokeStyle=HAND_COLORS[i]; ctx.lineWidth=3.5; ctx.lineCap='round';
-                ctx.shadowBlur=10; ctx.shadowColor=HAND_COLORS[i]; ctx.stroke();
-                ctx.restore();
-              }
-            }
-
-            // Cursor inside card
-            const cCol=hBtn?HAND_COLORS[i]:'rgba(255,255,255,0.35)';
-            ctx.beginPath(); ctx.arc(cPx,cPy,hBtn?10:13,0,Math.PI*2);
-            ctx.strokeStyle=cCol; ctx.lineWidth=2; ctx.stroke();
-            if(hBtn){
-              ctx.beginPath(); ctx.arc(cPx,cPy,4,0,Math.PI*2); ctx.fillStyle=cCol; ctx.fill();
-              ctx.fillStyle=`${cCol}BB`; ctx.font='11px system-ui'; ctx.textAlign='left';
-              ctx.fillText('⏳ Mantener…',cPx+18,cPy+4);
-            }
-
-            s.wasPinching[i]=isPinching;
-            s.prevCursorX[i]=cPx; s.prevCursorY[i]=cPy;
             continue;
           }
 
@@ -544,6 +517,16 @@ const SolarSystemModule = memo(({ addPoints }) => {
           }
         } // end for each hand
 
+        // ── Volcar UI de tarjeta a React (con throttle para evitar renders) ──
+        if(cardFrame){
+          const prev=cardUISyncRef.current;
+          const changed = cardFrame.btnId!==prev.btnId || Math.abs(cardFrame.pct-prev.pct)>0.04 || cardFrame.cvis;
+          if(changed){
+            cardUISyncRef.current={ btnId:cardFrame.btnId, pct:cardFrame.pct };
+            setCardUI({ cx:cardFrame.cx, cy:cardFrame.cy, cvis:cardFrame.cvis, btnId:cardFrame.btnId, pct:cardFrame.pct });
+          }
+        }
+
       } catch(err){ console.warn('[SolarSystem]',err); }
     };
 
@@ -585,7 +568,7 @@ const SolarSystemModule = memo(({ addPoints }) => {
           <>
             <motion.div
               initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
-              className="absolute inset-0 z-30 bg-black/55 backdrop-blur-sm"
+              className="absolute inset-0 z-30 bg-black/70"
             />
 
             <motion.div
@@ -617,8 +600,13 @@ const SolarSystemModule = memo(({ addPoints }) => {
                 <button
                   id="solar-close-btn"
                   onClick={closeInfo}
-                  className="w-12 h-12 flex items-center justify-center rounded-2xl border border-white/15 text-white/40 hover:text-white hover:bg-white/10 transition-all text-xl font-black flex-shrink-0"
-                >✕</button>
+                  className="relative overflow-hidden w-12 h-12 flex items-center justify-center rounded-2xl border border-white/15 text-white/60 hover:text-white hover:bg-white/10 transition-all text-xl font-black flex-shrink-0"
+                >
+                  {cardUI.btnId === 'solar-close-btn' && (
+                    <span className="absolute inset-0 bg-red-400/40 origin-bottom" style={{ transform: `scaleY(${cardUI.pct})` }} />
+                  )}
+                  <span className="relative z-10">✕</span>
+                </button>
               </div>
 
               {/* Page content */}
@@ -659,21 +647,41 @@ const SolarSystemModule = memo(({ addPoints }) => {
                 <button id="solar-prev-btn"
                   onClick={()=>goInfoPage(-1)}
                   disabled={selectedInfo.currentPage===0}
-                  className="flex-1 py-4 glass rounded-2xl border border-white/10 text-white/55 hover:text-white disabled:opacity-20 text-sm font-black transition-all active:scale-95">
-                  ← Anterior
+                  className="relative overflow-hidden flex-1 py-4 glass rounded-2xl border border-white/10 text-white/60 hover:text-white disabled:opacity-20 text-sm font-black transition-all active:scale-95">
+                  {cardUI.btnId === 'solar-prev-btn' && (
+                    <span className="absolute inset-0 bg-white/25 origin-left" style={{ transform: `scaleX(${cardUI.pct})` }} />
+                  )}
+                  <span className="relative z-10">← Anterior</span>
                 </button>
                 <button id="solar-next-btn"
                   onClick={()=>goInfoPage(1)}
                   disabled={selectedInfo.currentPage===selectedInfo.pages.length-1}
-                  className="flex-1 py-4 glass rounded-2xl border border-white/10 text-white/55 hover:text-white disabled:opacity-20 text-sm font-black transition-all active:scale-95">
-                  Siguiente →
+                  className="relative overflow-hidden flex-1 py-4 glass rounded-2xl border border-white/10 text-white/60 hover:text-white disabled:opacity-20 text-sm font-black transition-all active:scale-95">
+                  {cardUI.btnId === 'solar-next-btn' && (
+                    <span className="absolute inset-0 bg-white/25 origin-left" style={{ transform: `scaleX(${cardUI.pct})` }} />
+                  )}
+                  <span className="relative z-10">Siguiente →</span>
                 </button>
               </div>
 
-              <p className="text-center text-[8.5px] font-black uppercase tracking-[0.25em] text-white/20 pb-4">
-                👆 Mantén el puntero en un botón para activarlo · 🤏 Pellizca fuera para cerrar
+              <p className="text-center text-[8.5px] font-black uppercase tracking-[0.25em] text-white/25 pb-4">
+                👆 Mantén el puntero sobre un botón para activarlo
               </p>
             </motion.div>
+
+            {/* Cursor DOM por encima de la tarjeta (el del canvas queda detrás) */}
+            {cardUI.cvis && (
+              <div
+                className="absolute z-[55] pointer-events-none -translate-x-1/2 -translate-y-1/2 rounded-full"
+                style={{
+                  left: cardUI.cx, top: cardUI.cy,
+                  width: cardUI.btnId ? 22 : 26, height: cardUI.btnId ? 22 : 26,
+                  border: `2.5px solid ${cardUI.btnId ? '#34D399' : 'rgba(255,255,255,0.6)'}`,
+                  boxShadow: cardUI.btnId ? '0 0 14px rgba(52,211,153,0.7)' : 'none',
+                  background: cardUI.btnId ? 'rgba(52,211,153,0.25)' : 'transparent',
+                }}
+              />
+            )}
           </>
         )}
       </AnimatePresence>

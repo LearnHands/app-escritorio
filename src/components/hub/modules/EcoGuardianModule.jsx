@@ -53,6 +53,7 @@ const EcoGuardianModule = memo(({ addPoints }) => {
   const frameRef       = useRef(null);
   const spawnTimerRef  = useRef(null);
   const idCounter      = useRef(0);
+  const frameTick      = useRef(0);   // throttle de renders a ~30fps
 
   const stateRef = useRef({
     score: 0, lives: 3, streak: 0,
@@ -351,9 +352,17 @@ const EcoGuardianModule = memo(({ addPoints }) => {
       });
 
       s.items = filteredItems;
-      setItems([...filteredItems]);
-      setParticles([...s.particles]);
-      if (changed) syncStates();
+
+      // Render a ~30fps (la lógica corre a 60fps, pero el DOM se actualiza la mitad)
+      frameTick.current++;
+      if (frameTick.current % 2 === 0) {
+        setItems([...filteredItems]);
+        setParticles([...s.particles]);
+        if (changed) syncStates();
+      } else if (changed) {
+        // Cambios importantes (vidas, game over) se sincronizan siempre
+        syncStates();
+      }
 
       frameRef.current = requestAnimationFrame(updatePhysics);
     };

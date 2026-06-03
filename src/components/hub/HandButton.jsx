@@ -132,6 +132,7 @@ const HandButton = ({
     orange:  'from-orange-500 to-amber-500',
     red:     'from-red-600 to-rose-600',
     emerald: 'from-emerald-500 to-teal-600',
+    default: 'from-slate-600 to-slate-700',
   };
 
   return (
