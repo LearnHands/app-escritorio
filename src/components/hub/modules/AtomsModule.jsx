@@ -2,11 +2,18 @@ import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Atom, Info, X, ChevronRight } from 'lucide-react';
 import HandButton from '../HandButton';
+import GameInstruction from '../GameInstruction';
 
 const SUBSTANCES = [
   { id: 'water',   label: 'Agua (H₂O)',    color: '#00aaff', count: 40, mass: 1.0 },
   { id: 'iron',    label: 'Hierro (Fe)',   color: '#cc8844', count: 30, mass: 2.5 },
-  { id: 'oxygen',  label: 'Oxígeno (O₂)', color: '#44ffcc', count: 50, mass: 0.6 },
+  { id: 'oxygen',  label: 'Oxígeno (O₂)',  color: '#44ffcc', count: 50, mass: 0.6 },
+];
+
+const SUBSTANCES_EN = [
+  { id: 'water',   label: 'Water (H₂O)',    color: '#00aaff', count: 40, mass: 1.0 },
+  { id: 'iron',    label: 'Iron (Fe)',      color: '#cc8844', count: 30, mass: 2.5 },
+  { id: 'oxygen',  label: 'Oxygen (O₂)',    color: '#44ffcc', count: 50, mass: 0.6 },
 ];
 
 const STATES = [
@@ -15,11 +22,24 @@ const STATES = [
   { id: 'gas',    label: 'Gas',       emoji: '💨', tempRange: [66, 100], desc: 'Los átomos se mueven a gran velocidad y se separan. Volumen y forma variables.' },
 ];
 
+const STATES_EN = [
+  { id: 'solid',  label: 'Solid',    emoji: '🧊', tempRange: [0, 30],   desc: 'Atoms vibrate in place. Rigid and ordered structure. Fixed volume and shape.' },
+  { id: 'liquid', label: 'Liquid',   emoji: '💧', tempRange: [31, 65],  desc: 'Atoms move freely but remain together. Fixed volume, variable shape.' },
+  { id: 'gas',    label: 'Gas',       emoji: '💨', tempRange: [66, 100], desc: 'Atoms move at high speed and separate. Variable volume and shape.' },
+];
+
 const INFO_CARDS = [
   { title: 'Átomo', text: 'El átomo es la unidad más pequeña de la materia. Tiene un núcleo (protones + neutrones) rodeado de electrones en órbita.', emoji: '⚛️' },
   { title: 'Temperatura', text: 'La temperatura mide la energía cinética media de los átomos. A mayor temperatura, más rápido se mueven.', emoji: '🌡️' },
   { title: 'Cambio de Estado', text: 'Al calentar o enfriar una sustancia, sus átomos cambian de comportamiento: sólido → líquido → gas (fusión y evaporación).', emoji: '🔄' },
   { title: 'Energía', text: 'El calor es energía que se transfiere entre sustancias. Al absorber calor los átomos se mueven más rápido y el estado puede cambiar.', emoji: '🔥' },
+];
+
+const INFO_CARDS_EN = [
+  { title: 'Atom', text: 'The atom is the smallest unit of matter. It has a nucleus (protons + neutrons) surrounded by orbiting electrons.', emoji: '⚛️' },
+  { title: 'Temperature', text: 'Temperature measures the average kinetic energy of atoms. The higher the temperature, the faster they move.', emoji: '🌡️' },
+  { title: 'State Change', text: 'By heating or cooling a substance, its atoms change behavior: solid → liquid → gas (melting and evaporation).', emoji: '🔄' },
+  { title: 'Energy', text: 'Heat is energy transferred between substances. By absorbing heat, atoms move faster and the state can change.', emoji: '🔥' },
 ];
 
 // Initialize atoms for a substance
@@ -34,13 +54,14 @@ function initAtoms(sub, W, H) {
   }));
 }
 
-const AtomsModule = memo(({ addPoints }) => {
+const AtomsModule = memo(({ addPoints, lang = 'es' }) => {
   const [temperature, setTemperature] = useState(15); // 0-100
   const [substanceIdx, setSubstanceIdx] = useState(0);
   const [showInfo, setShowInfo] = useState(false);
   const [infoIdx, setInfoIdx] = useState(0);
   const [showIntro, setShowIntro] = useState(true);
   const [earnedStates, setEarnedStates] = useState(new Set());
+  const overlayOpen = showIntro || showInfo;
 
   const canvasRef = useRef(null);
   const animRef = useRef(null);
@@ -49,8 +70,12 @@ const AtomsModule = memo(({ addPoints }) => {
   const addPointsRef = useRef(addPoints);
   addPointsRef.current = addPoints;
 
-  const substance = SUBSTANCES[substanceIdx];
-  const currentState = STATES.find(s => temperature >= s.tempRange[0] && temperature <= s.tempRange[1]) || STATES[2];
+  const substances = lang === 'es' ? SUBSTANCES : SUBSTANCES_EN;
+  const states = lang === 'es' ? STATES : STATES_EN;
+  const infoCards = lang === 'es' ? INFO_CARDS : INFO_CARDS_EN;
+
+  const substance = substances[substanceIdx];
+  const currentState = states.find(s => temperature >= s.tempRange[0] && temperature <= s.tempRange[1]) || states[2];
 
   // Track state changes for points
   useEffect(() => {
@@ -58,28 +83,36 @@ const AtomsModule = memo(({ addPoints }) => {
       setEarnedStates(prev => { const ns = new Set(prev); ns.add(currentState.id); return ns; });
       addPointsRef.current(30);
     }
-  }, [currentState.id]);
+  }, [currentState.id, earnedStates]);
 
   // Re-init atoms when substance changes
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     atomsRef.current = initAtoms(substance, canvas.offsetWidth || 800, canvas.offsetHeight || 500);
-  }, [substanceIdx]);
+  }, [substanceIdx, substance]);
+
+  const lastStateUpdate = useRef(0);
+  const overlayOpenRef = useRef(overlayOpen);
+  useEffect(() => { overlayOpenRef.current = overlayOpen; }, [overlayOpen]);
 
   // Hand-based temperature control (hand Y position controls temperature)
   useEffect(() => {
     let frameId;
     const loop = () => {
       const hand = window.latestHandData;
-      if (hand?.cursors?.[0]?.isVisible) {
+      if (hand?.cursors?.[0]?.isVisible && !overlayOpenRef.current) {
         const normY = hand.cursors[0].y / window.innerHeight;
         // Map Y: top of screen (0) = 100°C hot, bottom (1) = 0°C cold
         const targetTemp = Math.round((1 - normY) * 100);
-        setTemperature(prev => {
-          const diff = targetTemp - prev;
-          return Math.max(0, Math.min(100, prev + diff * 0.04));
-        });
+        const diff = targetTemp - tempRef.current;
+        tempRef.current = Math.max(0, Math.min(100, tempRef.current + diff * 0.04));
+
+        const now = Date.now();
+        if (now - lastStateUpdate.current > 66) {
+          setTemperature(Math.round(tempRef.current));
+          lastStateUpdate.current = now;
+        }
       }
       frameId = requestAnimationFrame(loop);
     };
@@ -87,7 +120,10 @@ const AtomsModule = memo(({ addPoints }) => {
     return () => cancelAnimationFrame(frameId);
   }, []);
 
-  useEffect(() => { tempRef.current = temperature; }, [temperature]);
+  // Sync state back to tempRef in case it gets changed elsewhere
+  useEffect(() => {
+    tempRef.current = temperature;
+  }, [temperature]);
 
   // Canvas animation
   useEffect(() => {
@@ -108,7 +144,7 @@ const AtomsModule = memo(({ addPoints }) => {
 
       const temp = tempRef.current;
       const speedFactor = 0.2 + (temp / 100) * 5;
-      const state = STATES.find(s => temp >= s.tempRange[0] && temp <= s.tempRange[1]) || STATES[2];
+      const state = states.find(s => temp >= s.tempRange[0] && temp <= s.tempRange[1]) || states[2];
       const isSolid = state.id === 'solid';
       const isLiquid = state.id === 'liquid';
       const isGas = state.id === 'gas';
@@ -194,17 +230,19 @@ const AtomsModule = memo(({ addPoints }) => {
 
     animRef.current = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(animRef.current);
-  }, [substance]);
+  }, [substance, states]);
 
   const tempPercent = Math.round(temperature);
   const stateColor = currentState.id === 'solid' ? '#00aaff' : currentState.id === 'liquid' ? '#44bbff' : '#ff6644';
 
   return (
-    <div className="w-full h-full relative overflow-hidden select-none flex flex-col">
+    <div className={`w-full h-full relative overflow-hidden select-none flex flex-col ${overlayOpen ? 'pointer-events-none' : ''}`}>
       {/* Header */}
       <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-4 glass-dark px-6 py-2.5 rounded-2xl border border-white/10 shadow-xl">
         <Atom size={16} className="text-cyan-400" />
-        <span className="text-[9px] font-black uppercase tracking-[0.3em] text-white/60">Movimiento de Átomos</span>
+        <span className="text-[9px] font-black uppercase tracking-[0.3em] text-white/60">
+          {lang === 'es' ? 'Movimiento de Átomos' : 'Atom Movement'}
+        </span>
         <div className="w-px h-4 bg-white/20" />
         <span className="text-[9px] font-black uppercase tracking-widest" style={{ color: stateColor }}>
           {currentState.emoji} {currentState.label}
@@ -218,7 +256,9 @@ const AtomsModule = memo(({ addPoints }) => {
 
       {/* Temperature bar (left) */}
       <div className="absolute left-6 top-1/2 -translate-y-1/2 z-20 flex flex-col items-center gap-2">
-        <span className="text-[8px] font-black uppercase tracking-widest text-red-400">Calor</span>
+        <span className="text-[8px] font-black uppercase tracking-widest text-red-400">
+          {lang === 'es' ? 'Calor' : 'Heat'}
+        </span>
         <div className="w-4 h-48 rounded-full bg-white/10 border border-white/20 relative overflow-hidden">
           <div
             className="absolute bottom-0 left-0 right-0 rounded-full transition-all duration-100"
@@ -231,8 +271,12 @@ const AtomsModule = memo(({ addPoints }) => {
             {tempPercent}°
           </div>
         </div>
-        <span className="text-[8px] font-black uppercase tracking-widest text-blue-400">Frío</span>
-        <p className="text-[7px] text-white/30 font-black uppercase tracking-wider mt-1 text-center w-16">Mueve<br/>la mano<br/>↑↓</p>
+        <span className="text-[8px] font-black uppercase tracking-widest text-blue-400">
+          {lang === 'es' ? 'Frío' : 'Cold'}
+        </span>
+        <p className="text-[7px] text-white/30 font-black uppercase tracking-wider mt-1 text-center w-16">
+          {lang === 'es' ? <>Mueve<br/>la mano<br/>↑↓</> : <>Move<br/>hand<br/>↑↓</>}
+        </p>
       </div>
 
       {/* State info (bottom center) */}
@@ -243,7 +287,7 @@ const AtomsModule = memo(({ addPoints }) => {
           className="glass-dark px-5 py-3 rounded-2xl border border-white/10"
         >
           <p className="text-[11px] font-black uppercase tracking-widest mb-1" style={{ color: stateColor }}>
-            {currentState.emoji} Estado {currentState.label}
+            {currentState.emoji} {lang === 'es' ? `Estado ${currentState.label}` : `${currentState.label} State`}
           </p>
           <p className="text-[10px] text-white/50 leading-relaxed">{currentState.desc}</p>
         </motion.div>
@@ -251,17 +295,19 @@ const AtomsModule = memo(({ addPoints }) => {
 
       {/* Right controls */}
       <div className="absolute top-20 right-6 z-30 flex flex-col gap-3 w-36">
-        <div className="text-[8px] font-black uppercase tracking-widest text-white/40 text-center">Sustancia</div>
-        {SUBSTANCES.map((sub, i) => (
-          <HandButton key={sub.id} onClick={() => setSubstanceIdx(i)} dwellMs={800}
+        <div className="text-[8px] font-black uppercase tracking-widest text-white/40 text-center">
+          {lang === 'es' ? 'Sustancia' : 'Substance'}
+        </div>
+        {substances.map((sub, i) => (
+          <HandButton key={sub.id} onClick={() => setSubstanceIdx(i)} disabled={overlayOpen} dwellMs={800}
             variant={i === substanceIdx ? 'cyan' : 'default'}
             className={`px-3 py-2 text-[9px] ${i !== substanceIdx ? '!bg-white/5 !border-white/10' : ''}`}>
             {sub.label}
           </HandButton>
         ))}
         <div className="w-full h-px bg-white/10 my-1" />
-        <HandButton onClick={() => setShowInfo(true)} dwellMs={800} variant="purple" className="px-4 py-2.5 text-[10px]">
-          <Info size={13} /> Aprender
+        <HandButton onClick={() => setShowInfo(true)} disabled={overlayOpen} dwellMs={800} variant="purple" className="px-4 py-2.5 text-[10px]">
+          <Info size={13} /> {lang === 'es' ? 'Aprender' : 'Learn'}
         </HandButton>
       </div>
 
@@ -269,21 +315,25 @@ const AtomsModule = memo(({ addPoints }) => {
       <AnimatePresence>
         {showInfo && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="absolute inset-0 z-40 bg-black/70 flex items-center justify-center px-8">
+            className="absolute inset-0 z-40 bg-black/70 flex items-center justify-center px-8 pointer-events-auto">
             <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9 }}
               className="w-full max-w-md rounded-[32px] border border-cyan-500/30 bg-[#0a0a18]/95 shadow-2xl p-7 flex flex-col items-center gap-4 text-center">
-              <div className="text-5xl">{INFO_CARDS[infoIdx].emoji}</div>
-              <h3 className="text-xl font-display font-black italic uppercase text-cyan-400">{INFO_CARDS[infoIdx].title}</h3>
-              <p className="text-[12px] text-white/70 leading-relaxed">{INFO_CARDS[infoIdx].text}</p>
+              <div className="text-5xl">{infoCards[infoIdx].emoji}</div>
+              <h3 className="text-xl font-display font-black italic uppercase text-cyan-400">{infoCards[infoIdx].title}</h3>
+              <p className="text-[12px] text-white/70 leading-relaxed">{infoCards[infoIdx].text}</p>
               <div className="flex gap-3 mt-2">
-                <HandButton onClick={() => setInfoIdx(i => (i - 1 + INFO_CARDS.length) % INFO_CARDS.length)} dwellMs={700} variant="default" className="px-5 py-2.5 text-[10px] !bg-white/5">← Anterior</HandButton>
-                <HandButton onClick={() => setInfoIdx(i => (i + 1) % INFO_CARDS.length)} dwellMs={700} variant="cyan" className="px-5 py-2.5 text-[10px]">Siguiente →</HandButton>
+                <HandButton onClick={() => setInfoIdx(i => (i - 1 + infoCards.length) % infoCards.length)} dwellMs={700} variant="default" className="px-5 py-2.5 text-[10px] !bg-white/5">
+                  {lang === 'es' ? '← Anterior' : '← Previous'}
+                </HandButton>
+                <HandButton onClick={() => setInfoIdx(i => (i + 1) % infoCards.length)} dwellMs={700} variant="cyan" className="px-5 py-2.5 text-[10px]">
+                  {lang === 'es' ? 'Siguiente →' : 'Next →'}
+                </HandButton>
               </div>
               <HandButton onClick={() => setShowInfo(false)} dwellMs={800} graceMs={600} variant="default" className="px-8 py-3 text-[10px] !bg-white/5">
-                <X size={12} /> Cerrar
+                <X size={12} /> {lang === 'es' ? 'Cerrar' : 'Close'}
               </HandButton>
               <div className="flex gap-1.5">
-                {INFO_CARDS.map((_, i) => (
+                {infoCards.map((_, i) => (
                   <div key={i} className={`w-1.5 h-1.5 rounded-full ${i === infoIdx ? 'bg-cyan-400' : 'bg-white/20'}`} />
                 ))}
               </div>
@@ -296,22 +346,32 @@ const AtomsModule = memo(({ addPoints }) => {
       <AnimatePresence>
         {showIntro && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="absolute inset-0 z-50 bg-black/75 flex items-center justify-center px-8">
+            className="absolute inset-0 z-50 bg-black/75 flex items-center justify-center px-8 pointer-events-auto">
             <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }}
               className="w-full max-w-md rounded-[36px] border border-white/10 bg-[#0a0a18]/96 shadow-2xl p-8 flex flex-col items-center text-center gap-5">
               <div className="text-7xl">⚛️</div>
-              <h2 className="text-3xl font-display font-black italic uppercase tracking-tight text-gradient">Movimiento de Átomos</h2>
+              <h2 className="text-3xl font-display font-black italic uppercase tracking-tight text-gradient">
+                {lang === 'es' ? 'Movimiento de Átomos' : 'Atom Movement'}
+              </h2>
               <p className="text-[12px] text-white/60 leading-relaxed">
-                Mueve tu mano <span className="text-cyan-400 font-black">↑ arriba</span> para calentar y <span className="text-blue-400 font-black">↓ abajo</span> para enfriar.
-                Observa cómo los átomos cambian entre <span className="text-white font-black">sólido → líquido → gas</span>.
+                {lang === 'es' 
+                  ? <>Mueve tu mano <span className="text-cyan-400 font-black">↑ arriba</span> para calentar y <span className="text-blue-400 font-black">↓ abajo</span> para enfriar. Observa cómo los átomos cambian entre <span className="text-white font-black">sólido → líquido → gas</span>.</>
+                  : <>Move your hand <span className="text-cyan-400 font-black">↑ up</span> to heat and <span className="text-blue-400 font-black">↓ down</span> to cool. Watch how atoms change between <span className="text-white font-black">solid → liquid → gas</span>.</>}
               </p>
               <HandButton onClick={() => setShowIntro(false)} dwellMs={900} graceMs={600} variant="cyan" className="px-10 py-4 text-sm">
-                <Atom size={16} /> ¡Explorar!
+                <Atom size={16} /> {lang === 'es' ? '¡Explorar!' : 'Explore!'}
               </HandButton>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
+
+      <GameInstruction
+        messageEs="Mueve tu mano de arriba a abajo para regular la temperatura"
+        messageEn="Move your hand up and down to adjust the temperature"
+        lang={lang}
+        icon="🌡️"
+      />
     </div>
   );
 });

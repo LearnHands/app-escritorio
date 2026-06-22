@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Play, RotateCcw, Volume2, VolumeX, Trophy, Heart, Zap, Sparkles } from 'lucide-react';
 import HandButton from '../HandButton';
 import LifeLostOverlay from '../LifeLostOverlay';
+import GameInstruction from '../GameInstruction';
 
 // --- CONFIGURACIÓN DE AUDIO SINTÉTICO (Web Audio API) ---
 class GameSoundController {
@@ -94,7 +95,7 @@ const POWERUPS = {
   WIDE: { id: 'wide', label: 'Barra Gigante', color: '#3B82F6', symbol: '↔️' },
 };
 
-const BricksModule = memo(({ addPoints }) => {
+const BricksModule = memo(({ addPoints, lang = 'es' }) => {
   const canvasRef = useRef(null);
   
   // Estados del juego React
@@ -133,18 +134,46 @@ const BricksModule = memo(({ addPoints }) => {
   // Stable sync — no state captures in closure so the game loop effect never restarts.
   // React bails out on setState calls with unchanged values (Object.is), so calling
   // unconditionally does not cause extra re-renders.
+  const lastScoreRef = useRef(-1);
+  const lastLevelRef = useRef(-1);
+  const lastLivesRef = useRef(-1);
+  const lastLifeFlashRef = useRef(-1);
+  const lastGameStateRef = useRef('');
+  const lastActivePowerupLabelRef = useRef(undefined);
+
+  // Stable sync — no state captures in closure so the game loop effect never restarts.
+  // React bails out on setState calls with unchanged values (Object.is), but calling
+  // them unconditionally still triggers scheduler overhead. Checking values first
+  // avoids scheduling any React updates during active gameplay.
   const syncReactState = useCallback(() => {
     const s = stateRef.current;
-    setScore(s.score);
-    setLevel(s.level);
-    setLives(s.lives);
-    setLifeFlash(s.lifeLost);
-    setGameState(s.gameState);
+    if (s.score !== lastScoreRef.current) {
+      setScore(s.score);
+      lastScoreRef.current = s.score;
+    }
+    if (s.level !== lastLevelRef.current) {
+      setLevel(s.level);
+      lastLevelRef.current = s.level;
+    }
+    if (s.lives !== lastLivesRef.current) {
+      setLives(s.lives);
+      lastLivesRef.current = s.lives;
+    }
+    if (s.lifeLost !== lastLifeFlashRef.current) {
+      setLifeFlash(s.lifeLost);
+      lastLifeFlashRef.current = s.lifeLost;
+    }
+    if (s.gameState !== lastGameStateRef.current) {
+      setGameState(s.gameState);
+      lastGameStateRef.current = s.gameState;
+    }
 
     const active = Object.keys(s.activePowerups).filter(k => s.activePowerups[k] > 0);
-    setActivePowerupLabel(
-      active.length > 0 ? active.map(k => POWERUPS[k]?.label).join(' + ') : null
-    );
+    const label = active.length > 0 ? active.map(k => POWERUPS[k]?.label).join(' + ') : null;
+    if (label !== lastActivePowerupLabelRef.current) {
+      setActivePowerupLabel(label);
+      lastActivePowerupLabelRef.current = label;
+    }
   }, []); // [] = stable reference; removing stale-captured state vars
 
   // Keep a ref so the game loop can always reach the latest addPoints without
@@ -564,6 +593,7 @@ const BricksModule = memo(({ addPoints }) => {
       if (s.balls.length === 0) {
         s.lives -= 1;
         s.lifeLost += 1;
+        addPointsRef.current(-10);
         if (s.lives <= 0) {
           s.gameState = 'GAMEOVER';
           soundCtrl.playGameOver();
@@ -938,10 +968,12 @@ const BricksModule = memo(({ addPoints }) => {
                     Balls Crush
                   </h2>
                   <p className="text-xs font-black text-white/40 uppercase tracking-[0.3em]">
-                    Destructor de Ladrillos Gestual
+                    {lang === 'es' ? 'Destructor de Ladrillos Gestual' : 'Gestural Brick Breaker'}
                   </p>
                   <p className="text-[10px] text-white/50 leading-relaxed max-w-sm italic">
-                    Desliza tu mano 🖐️ para mover la barra lateralmente. Apunta con tu mano y realiza un pellizco 🤏 para lanzar o disparar.
+                    {lang === 'es' 
+                      ? 'Desliza tu mano 🖐️ para mover la barra lateralmente. Apunta con tu mano y realiza un pellizco 🤏 para lanzar o disparar.' 
+                      : 'Slide your hand 🖐️ to move the paddle. Point your hand and pinch 🤏 to launch or shoot.'}
                   </p>
                 </div>
 
@@ -951,7 +983,7 @@ const BricksModule = memo(({ addPoints }) => {
                   variant="purple"
                   dwellMs={900}
                 >
-                  <Play fill="white" size={14} /> Comenzar Juego
+                  <Play fill="white" size={14} /> {lang === 'es' ? 'Comenzar Juego' : 'Start Game'}
                 </HandButton>
               </motion.div>
             </motion.div>
@@ -967,10 +999,10 @@ const BricksModule = memo(({ addPoints }) => {
               <div className="glass p-12 rounded-[40px] border border-white/10 flex flex-col items-center gap-6 max-w-md">
                 <span className="text-7xl animate-pulse">💀</span>
                 <h3 className="text-4xl font-display font-black text-red-500 italic uppercase">
-                  Juego Terminado
+                  {lang === 'es' ? 'Juego Terminado' : 'Game Over'}
                 </h3>
                 <p className="text-white/50 text-xs uppercase tracking-widest font-black mb-4">
-                  Obtuviste {score} puntos en LearnHands
+                  {lang === 'es' ? `Obtuviste ${score} puntos en LearnHands` : `You scored ${score} points in LearnHands`}
                 </p>
                 <HandButton
                   onClick={() => initGame(1)}
@@ -979,7 +1011,7 @@ const BricksModule = memo(({ addPoints }) => {
                   dwellMs={900}
                   graceMs={600}
                 >
-                  <RotateCcw size={14} /> Intentar de Nuevo
+                  <RotateCcw size={14} /> {lang === 'es' ? 'Intentar de Nuevo' : 'Try Again'}
                 </HandButton>
               </div>
             </motion.div>
@@ -995,10 +1027,10 @@ const BricksModule = memo(({ addPoints }) => {
               <div className="glass p-12 rounded-[40px] border border-white/10 flex flex-col items-center gap-6 max-w-md">
                 <span className="text-7xl animate-bounce">🏆</span>
                 <h3 className="text-4xl font-display font-black text-green-500 italic uppercase">
-                  ¡Nivel Completado!
+                  {lang === 'es' ? '¡Nivel Completado!' : 'Level Completed!'}
                 </h3>
                 <p className="text-white/40 text-[9px] uppercase tracking-widest font-black mb-4">
-                  ¡Excelente control y puntería de manos!
+                  {lang === 'es' ? '¡Excelente control y puntería de manos!' : 'Excellent hand control and aim!'}
                 </p>
                 <HandButton
                   onClick={() => initGame(level + 1)}
@@ -1007,7 +1039,7 @@ const BricksModule = memo(({ addPoints }) => {
                   dwellMs={900}
                   graceMs={600}
                 >
-                  <Play fill="white" size={12} /> Avanzar al Nivel {level + 1}
+                  <Play fill="white" size={12} /> {lang === 'es' ? `Avanzar al Nivel ${level + 1}` : `Advance to Level ${level + 1}`}
                 </HandButton>
               </div>
             </motion.div>
@@ -1017,16 +1049,18 @@ const BricksModule = memo(({ addPoints }) => {
         {activePowerupLabel && (
           <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-amber-500/20 backdrop-blur-md border border-amber-500/30 text-amber-300 px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest flex items-center gap-2 shadow-lg animate-pulse z-10">
             <Zap size={10} className="fill-amber-300" />
-            Poder: {activePowerupLabel}
+            {lang === 'es' ? 'Poder' : 'Power'}: {activePowerupLabel}
           </div>
         )}
       </div>
 
       {gameState === 'PLAYING' && (
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-4 text-white/30 text-[9px] font-black uppercase tracking-widest glass px-6 py-2.5 rounded-full border border-white/5 animate-pulse z-20">
-          <Sparkles size={12} className="text-purple-400" />
-          <span>Control: Desliza tu mano • Pellizco 🤏 para lanzar</span>
-        </div>
+        <GameInstruction
+          messageEs="Control: Desliza tu mano • Pellizco 2ª mano 🤏 para lanzar o disparar"
+          messageEn="Control: Slide your hand • Pinch 2nd hand 🤏 to launch or shoot"
+          lang={lang}
+          icon="🎮"
+        />
       )}
 
       {/* Feedback al perder una vida */}

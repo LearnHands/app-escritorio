@@ -45,12 +45,25 @@ const drawHand = (ctx, landmarks, color, w, h) => {
 
 // transparent=true  → bright camera feed, barely-visible overlay (all modules except Pizarra)
 // transparent=false → dark/greyscale camera, heavier overlay (Pizarra drawing mode)
-const LayeredEngine = ({ children, videoRef, isLoaded, error, transparent = false }) => {
+const LayeredEngine = ({ children, videoRef, isLoaded, error, transparent = false, lang = 'es' }) => {
   const canvasRef = useRef(null);
 
   // Block ALL mouse and keyboard input — only hand gestures drive this system
   useEffect(() => {
-    const block = (e) => { e.preventDefault(); e.stopImmediatePropagation(); };
+    const block = (e) => {
+      // Permitir eventos si el target es un campo de entrada (login input)
+      if (
+        e.target && 
+        (e.target.tagName === 'INPUT' || 
+         e.target.tagName === 'TEXTAREA' || 
+         e.target.closest('input') || 
+         e.target.closest('textarea'))
+      ) {
+        return;
+      }
+      e.preventDefault(); 
+      e.stopImmediatePropagation(); 
+    };
     const blocked = ['mousedown','mouseup','click','dblclick','contextmenu','wheel','keydown','keyup','keypress'];
     blocked.forEach(ev => document.addEventListener(ev, block, { capture: true, passive: false }));
     document.body.style.cursor = 'none';
@@ -62,6 +75,28 @@ const LayeredEngine = ({ children, videoRef, isLoaded, error, transparent = fals
 
   useEffect(() => {
     let animId;
+
+    // Cache elements for cursors
+    const cursorElements = [null, null];
+    const getCursorElements = (index) => {
+      if (!cursorElements[index]) {
+        cursorElements[index] = {
+          container: document.getElementById(`virtual-cursor-container-${index}`),
+          trail: document.getElementById(`virtual-cursor-trail-${index}`),
+          dot: document.getElementById(`virtual-cursor-dot-${index}`),
+          ping: document.getElementById(`virtual-cursor-ping-${index}`),
+          label: document.getElementById(`virtual-cursor-label-${index}`),
+          tooltip: document.getElementById(`virtual-cursor-tooltip-${index}`)
+        };
+      }
+      return cursorElements[index];
+    };
+
+    // Cache for DOM states to prevent layout thrashing
+    const domStates = [
+      { label: '', display: 'none', trailDisplay: 'none', dotPinch: null, tooltip: '', tooltipDisplay: 'none' },
+      { label: '', display: 'none', trailDisplay: 'none', dotPinch: null, tooltip: '', tooltipDisplay: 'none' }
+    ];
 
     // Trail position storage for smoothing
     const trails = [
@@ -101,19 +136,18 @@ const LayeredEngine = ({ children, videoRef, isLoaded, error, transparent = fals
       for (let i = 0; i < 2; i++) {
         const cursor = cursors[i];
         const gesture = gestures[i];
-        
-        const containerEl = document.getElementById(`virtual-cursor-container-${i}`);
-        const trailEl = document.getElementById(`virtual-cursor-trail-${i}`);
-        const dotEl = document.getElementById(`virtual-cursor-dot-${i}`);
-        const pingEl = document.getElementById(`virtual-cursor-ping-${i}`);
-        const labelEl = document.getElementById(`virtual-cursor-label-${i}`);
+        const els = getCursorElements(i);
+        const state = domStates[i];
 
         if (cursor && cursor.isVisible) {
           // Posición del contenedor principal
-          if (containerEl) {
-            containerEl.style.left = `${cursor.x}px`;
-            containerEl.style.top = `${cursor.y}px`;
-            containerEl.style.display = 'block';
+          if (els.container) {
+            els.container.style.left = `${cursor.x}px`;
+            els.container.style.top = `${cursor.y}px`;
+            if (state.display !== 'block') {
+              els.container.style.display = 'block';
+              state.display = 'block';
+            }
           }
 
           // Posición de la estela con filtro de suavizado LERP
@@ -127,43 +161,163 @@ const LayeredEngine = ({ children, videoRef, isLoaded, error, transparent = fals
             trail.y += (cursor.y - trail.y) * 0.75;
           }
 
-          if (trailEl) {
-            trailEl.style.left = `${trail.x}px`;
-            trailEl.style.top = `${trail.y}px`;
-            trailEl.style.display = 'block';
+          if (els.trail) {
+            els.trail.style.left = `${trail.x}px`;
+            els.trail.style.top = `${trail.y}px`;
+            if (state.trailDisplay !== 'block') {
+              els.trail.style.display = 'block';
+              state.trailDisplay = 'block';
+            }
           }
 
           // Estilos dinámicos del cursor en base a la pinza
-          if (dotEl) {
-            if (gesture?.isPinching) {
-              dotEl.style.transform = 'scale(0.85)';
-              dotEl.style.backgroundColor = 'rgba(255, 255, 255, 0.95)';
-              dotEl.style.borderColor = '#ffffff';
-              dotEl.style.boxShadow = '0 0 35px white';
-              if (pingEl) pingEl.style.display = 'block';
-            } else {
-              dotEl.style.transform = 'scale(1)';
-              dotEl.style.backgroundColor = i === 0 ? 'rgba(124, 58, 237, 0.25)' : 'rgba(236, 72, 153, 0.25)';
-              dotEl.style.borderColor = i === 0 ? '#7C3AED' : '#EC4899';
-              dotEl.style.boxShadow = i === 0 ? '0 0 20px rgba(124, 58, 237, 0.5)' : '0 0 20px rgba(236, 72, 153, 0.5)';
-              if (pingEl) pingEl.style.display = 'none';
+          if (els.dot) {
+            const isPinching = !!gesture?.isPinching;
+            if (state.dotPinch !== isPinching) {
+              state.dotPinch = isPinching;
+              if (isPinching) {
+                els.dot.style.transform = 'scale(0.85)';
+                els.dot.style.backgroundColor = 'rgba(255, 255, 255, 0.95)';
+                els.dot.style.borderColor = '#ffffff';
+                els.dot.style.boxShadow = '0 0 35px white';
+                if (els.ping) els.ping.style.display = 'block';
+              } else {
+                els.dot.style.transform = 'scale(1)';
+                els.dot.style.backgroundColor = i === 0 ? 'rgba(124, 58, 237, 0.25)' : 'rgba(236, 72, 153, 0.25)';
+                els.dot.style.borderColor = i === 0 ? '#7C3AED' : '#EC4899';
+                els.dot.style.boxShadow = i === 0 ? '0 0 20px rgba(124, 58, 237, 0.5)' : '0 0 20px rgba(236, 72, 153, 0.5)';
+                if (els.ping) els.ping.style.display = 'none';
+              }
             }
           }
 
           // Texto descriptivo del gesto actual
-          if (labelEl) {
-            labelEl.textContent = gesture?.isIndexUp 
+          if (els.label) {
+            const txt = gesture?.isIndexUp 
               ? '☝️ Dibujando' 
               : gesture?.isOpenHand 
               ? '✋ Pausa' 
               : gesture?.isPinching 
               ? '🤏 Agarrar' 
               : `🖐️ Mano ${i + 1}`;
+            
+            if (state.label !== txt) {
+              els.label.textContent = txt;
+              state.label = txt;
+            }
           }
+
+          // --- LOGICA DE TOOLTIP Y METRICAS DE UX EN TIEMPO REAL ---
+          if (window.currentSessionUX) {
+            const ux = window.currentSessionUX;
+            const game = ux.gameName;
+            
+            // Medimos métricas sobre el cursor principal (i === 0)
+            if (i === 0) {
+              ux.totalGestureFrames = (ux.totalGestureFrames || 0) + 1;
+
+              let gestureActive = false;
+              if (game === 'PIZARRA') {
+                gestureActive = !!gesture?.isIndexUp;
+              } else if (game === 'PIANO') {
+                gestureActive = !!(gesture?.isOpenHand || gesture?.isIndexUp || gesture?.isPinching);
+              } else {
+                gestureActive = !!gesture?.isPinching;
+              }
+
+              if (gestureActive) {
+                ux.successGestureFrames = (ux.successGestureFrames || 0) + 1;
+
+                // Transición del gesto de inactivo a activo
+                if (!ux.wasGestureActive) {
+                  ux.wasGestureActive = true;
+                  ux.interactionCount = (ux.interactionCount || 0) + 1;
+                  ux.consecutiveSuccessCount = (ux.consecutiveSuccessCount || 0) + 1;
+                  ux.lastInteractionTime = Date.now();
+                }
+
+                // Si logramos 3 interacciones sin disparar la ayuda, registramos autonomía
+                if (ux.autonomyTime === null && ux.consecutiveSuccessCount >= 3) {
+                  ux.autonomyTime = (Date.now() - ux.startTime) / 1000;
+                }
+              } else {
+                ux.wasGestureActive = false;
+              }
+
+              // Detectar falsos positivos (gestos < 120ms sin click)
+              if (gestureActive) {
+                if (!ux.gestureStartTime) ux.gestureStartTime = Date.now();
+              } else if (ux.gestureStartTime) {
+                const gestureDuration = Date.now() - ux.gestureStartTime;
+                ux.gestureStartTime = null;
+                const timeSinceLastClick = Date.now() - (ux.lastInteractionTime || 0);
+                if (gestureDuration < 120 && timeSinceLastClick > 200) {
+                  ux.falsePositives = (ux.falsePositives || 0) + 1;
+                }
+              }
+
+              // Alerta de ayuda (Struggling): mano visible por > 6s sin interacción
+              const lastInteract = ux.lastInteractionTime || ux.startTime;
+              const elapsedNoInteract = Date.now() - lastInteract;
+
+              if (elapsedNoInteract > 6000) {
+                let text = '';
+                if (game === 'PIZARRA') {
+                  text = lang === 'es' ? '¡Levanta el índice ☝️ para pintar!' : '¡Lift your index ☝️ to paint!';
+                } else if (game === 'PIANO') {
+                  text = lang === 'es' ? '¡Acerca tus dedos a las teclas 🎹!' : '¡Bring fingers close to keys 🎹!';
+                } else if (game === 'BRICKS') {
+                  text = lang === 'es' ? '¡Desliza y pellizca 🤏 para lanzar!' : '¡Slide & pinch 🤏 to launch!';
+                } else {
+                  text = lang === 'es' ? '¡Pellizca 🤏 para interactuar!' : '¡Pinch 🤏 to interact!';
+                }
+
+                if (els.tooltip) {
+                  if (state.tooltip !== text) {
+                    els.tooltip.textContent = text;
+                    state.tooltip = text;
+                  }
+                  if (state.tooltipDisplay !== 'block') {
+                    els.tooltip.style.display = 'block';
+                    state.tooltipDisplay = 'block';
+                  }
+                }
+
+                if (!ux.tooltipActiveThisTime) {
+                  ux.tooltipActiveThisTime = true;
+                  ux.tooltipTriggered = true;
+                  ux.falseNegatives = (ux.falseNegatives || 0) + 1;
+                  ux.consecutiveSuccessCount = 0; // resetear racha de autonomía
+                }
+              } else {
+                if (els.tooltip && state.tooltipDisplay !== 'none') {
+                  els.tooltip.style.display = 'none';
+                  state.tooltipDisplay = 'none';
+                }
+                ux.tooltipActiveThisTime = false;
+              }
+            }
+          } else {
+            if (els.tooltip && state.tooltipDisplay !== 'none') {
+              els.tooltip.style.display = 'none';
+              state.tooltipDisplay = 'none';
+            }
+          }
+
         } else {
           // Ocultar elementos si no se detecta la mano
-          if (containerEl) containerEl.style.display = 'none';
-          if (trailEl) trailEl.style.display = 'none';
+          if (els.container && state.display !== 'none') {
+            els.container.style.display = 'none';
+            state.display = 'none';
+          }
+          if (els.trail && state.trailDisplay !== 'none') {
+            els.trail.style.display = 'none';
+            state.trailDisplay = 'none';
+          }
+          if (els.tooltip && state.tooltipDisplay !== 'none') {
+            els.tooltip.style.display = 'none';
+            state.tooltipDisplay = 'none';
+          }
           trails[i].initialized = false;
         }
       }
@@ -217,6 +371,7 @@ const LayeredEngine = ({ children, videoRef, isLoaded, error, transparent = fals
           <div id="virtual-cursor-ping-0" className="w-2 h-2 bg-purple-600 rounded-full animate-ping hidden" />
         </div>
         <div id="virtual-cursor-label-0" className="absolute -top-14 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-black uppercase tracking-widest text-white italic drop-shadow-xl bg-black/40 px-3 py-1.5 rounded-xl backdrop-blur-md border border-white/10">🖐️ Mano 1</div>
+        <div id="virtual-cursor-tooltip-0" className="absolute top-14 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-black uppercase tracking-widest text-white bg-red-600/90 px-4 py-2.5 rounded-2xl border border-red-500/30 shadow-[0_0_25px_rgba(220,38,38,0.55)] animate-bounce hidden z-[10002]">¡Pellizca 🤏!</div>
       </div>
 
       {/* Mano 2 (Rosa) */}
@@ -226,6 +381,7 @@ const LayeredEngine = ({ children, videoRef, isLoaded, error, transparent = fals
           <div id="virtual-cursor-ping-1" className="w-2 h-2 bg-pink-600 rounded-full animate-ping hidden" />
         </div>
         <div id="virtual-cursor-label-1" className="absolute -top-14 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-black uppercase tracking-widest text-white italic drop-shadow-xl bg-black/40 px-3 py-1.5 rounded-xl backdrop-blur-md border border-white/10">🖐️ Mano 2</div>
+        <div id="virtual-cursor-tooltip-1" className="absolute top-14 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-black uppercase tracking-widest text-white bg-red-600/90 px-4 py-2.5 rounded-2xl border border-red-500/30 shadow-[0_0_25px_rgba(220,38,38,0.55)] animate-bounce hidden z-[10002]">¡Pellizca 🤏!</div>
       </div>
 
       {/* Loading & Error Screen */}

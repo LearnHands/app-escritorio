@@ -1,10 +1,11 @@
 import React, { useRef, useEffect, useState, memo } from 'react';
 import { Trash2 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import GameInstruction from '../GameInstruction';
 
 const COLORS = ['#7C3AED', '#06B6D4', '#EC4899', '#10B981', '#F97316', '#FFFFFF'];
 
-const DrawingModule = memo(({ addPoints }) => {
+const DrawingModule = memo(({ addPoints, lang = 'es' }) => {
   const canvasRef = useRef(null);
   const [color, setColor] = useState(COLORS[0]);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -84,7 +85,9 @@ const DrawingModule = memo(({ addPoints }) => {
     <div className="w-full h-full flex relative overflow-hidden bg-transparent">
       {/* Sidebar Controls */}
       <aside className="w-24 glass-dark border-r border-white/5 flex flex-col items-center gap-8 py-12 z-20">
-        <div className="text-[10px] font-black text-white/20 uppercase tracking-widest vertical-text mb-4">Colores</div>
+        <div className="text-[10px] font-black text-white/20 uppercase tracking-widest vertical-text mb-4">
+          {lang === 'es' ? 'Colores' : 'Colors'}
+        </div>
         {COLORS.map(c => (
           <button 
             key={c} 
@@ -103,7 +106,9 @@ const DrawingModule = memo(({ addPoints }) => {
             >
               <Trash2 size={24} />
             </button>
-            <div className="text-[8px] font-black text-white/20 uppercase tracking-widest">Borrar</div>
+            <div className="text-[8px] font-black text-white/20 uppercase tracking-widest">
+              {lang === 'es' ? 'Borrar' : 'Clear'}
+            </div>
         </div>
       </aside>
 
@@ -121,11 +126,20 @@ const DrawingModule = memo(({ addPoints }) => {
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-10">
             <div className="text-center">
               <div className="text-[120px]">☝️</div>
-              <div className="text-4xl font-display font-black uppercase tracking-widest italic">Usa tu dedo índice</div>
+              <div className="text-4xl font-display font-black uppercase tracking-widest italic">
+                {lang === 'es' ? 'Usa tu dedo índice' : 'Use your index finger'}
+              </div>
             </div>
           </div>
         )}
       </div>
+
+      <GameInstruction
+        messageEs="Levanta el dedo índice para pintar en la pizarra"
+        messageEn="Raise your index finger to paint on the canvas"
+        lang={lang}
+        icon="☝️"
+      />
     </div>
   );
 });

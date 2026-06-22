@@ -2,6 +2,7 @@ import React, { useState, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Clock, RotateCcw, Info, X, CheckCircle2, ChevronRight } from 'lucide-react';
 import HandButton from '../HandButton';
+import GameInstruction from '../GameInstruction';
 
 // Historical events for Latin American / World history
 const ALL_EVENTS = [
@@ -19,6 +20,21 @@ const ALL_EVENTS = [
   { id: 'e12', year: 1960, label: 'Ecuador en la ONU', emoji: '🌐', category: 'Ecuador', desc: 'Ecuador refuerza su participación en la Organización de Naciones Unidas en los años 60.' },
 ];
 
+const ALL_EVENTS_EN = [
+  { id: 'e1',  year: 1492, label: 'Columbus reaches America', emoji: '⛵', category: 'America', desc: 'Christopher Columbus reaches the Americas on October 12, 1492, initiating the era of European exploration.' },
+  { id: 'e2',  year: 1532, label: 'Conquest of the Inca Empire', emoji: '🏔️', category: 'America', desc: 'Francisco Pizarro captures the Inca Atahualpa in Cajamarca, marking the end of the Inca Empire.' },
+  { id: 'e3',  year: 1776, label: 'U.S. Independence', emoji: '🦅', category: 'World', desc: 'The 13 American colonies declare their independence from Great Britain on July 4, 1776.' },
+  { id: 'e4',  year: 1789, label: 'French Revolution', emoji: '🗼', category: 'World', desc: 'The French Revolution overthrows the monarchy and proclaims the principles of Liberty, Equality, and Fraternity.' },
+  { id: 'e5',  year: 1822, label: 'Ecuadorian Independence', emoji: '🇪🇨', category: 'Ecuador', desc: 'On May 24, 1822, the Battle of Pichincha liberates Quito from Spanish rule.' },
+  { id: 'e6',  year: 1869, label: 'Opening of the Suez Canal', emoji: '🚢', category: 'World', desc: 'The Suez Canal connects the Mediterranean Sea to the Red Sea, revolutionizing maritime trade.' },
+  { id: 'e7',  year: 1903, label: 'First flight of the Wright brothers', emoji: '✈️', category: 'World', desc: 'The Wright brothers make the first controlled, powered flight in Kitty Hawk, North Carolina.' },
+  { id: 'e8',  year: 1945, label: 'End of World War II', emoji: '🕊️', category: 'World', desc: 'The surrender of Germany (May) and Japan (August) of 1945 puts an end to World War II.' },
+  { id: 'e9',  year: 1969, label: 'Man reaches the Moon', emoji: '🌙', category: 'World', desc: 'Neil Armstrong and Buzz Aldrin become the first humans to walk on the Moon on July 20, 1969.' },
+  { id: 'e10', year: 1991, label: 'End of the Cold War', emoji: '🌍', category: 'World', desc: 'The dissolution of the Soviet Union in 1991 ends the Cold War between the US and the USSR.' },
+  { id: 'e11', year: 1830, label: 'Dissolution of Gran Colombia', emoji: '🗺️', category: 'America', desc: 'Ecuador, Venezuela, and Colombia separate from Gran Colombia, forming independent nations.' },
+  { id: 'e12', year: 1960, label: 'Ecuador in the UN', emoji: '🌐', category: 'Ecuador', desc: 'Ecuador strengthens its participation in the United Nations Organization in the 60s.' },
+];
+
 const ROUNDS = [
   { ids: ['e5','e1','e9','e3'],  label: 'América y Mundo', desc: 'Ordena estos 4 eventos del más antiguo al más reciente.' },
   { ids: ['e2','e4','e7','e8'],  label: 'Conquistas y Guerras', desc: 'Cronología de eventos históricos clave.' },
@@ -26,7 +42,14 @@ const ROUNDS = [
   { ids: ['e3','e4','e11','e9'], label: 'Independencias y Exploración', desc: 'Desde independencias hasta la conquista espacial.' },
 ];
 
-const TimelineModule = memo(({ addPoints }) => {
+const ROUNDS_EN = [
+  { ids: ['e5','e1','e9','e3'],  label: 'America and the World', desc: 'Order these 4 events from oldest to most recent.' },
+  { ids: ['e2','e4','e7','e8'],  label: 'Conquests and Wars', desc: 'Chronology of key historical events.' },
+  { ids: ['e1','e5','e10','e6'], label: '15th–20th Centuries', desc: '4 events spanning 5 centuries of history.' },
+  { ids: ['e3','e4','e11','e9'], label: 'Independences and Exploration', desc: 'From independences to space conquest.' },
+];
+
+const TimelineModule = memo(({ addPoints, lang = 'es' }) => {
   const [roundIdx, setRoundIdx] = useState(0);
   const [selected, setSelected] = useState(null);
   const [placed, setPlaced] = useState({}); // slotIdx → eventId
@@ -40,8 +63,11 @@ const TimelineModule = memo(({ addPoints }) => {
   const addPointsRef = React.useRef(addPoints);
   addPointsRef.current = addPoints;
 
-  const round = ROUNDS[roundIdx];
-  const events = round.ids.map(id => ALL_EVENTS.find(e => e.id === id));
+  const allEvents = lang === 'es' ? ALL_EVENTS : ALL_EVENTS_EN;
+  const rounds = lang === 'es' ? ROUNDS : ROUNDS_EN;
+
+  const round = rounds[roundIdx];
+  const events = round.ids.map(id => allEvents.find(e => e.id === id));
   const sortedByYear = [...events].sort((a, b) => a.year - b.year);
 
   const shuffled = React.useMemo(() => {
@@ -51,7 +77,7 @@ const TimelineModule = memo(({ addPoints }) => {
       [arr[i], arr[j]] = [arr[j], arr[i]];
     }
     return arr;
-  }, [roundIdx]);
+  }, [roundIdx, events]);
 
   const selectCard = useCallback((event) => {
     if (checked) return;
@@ -86,7 +112,7 @@ const TimelineModule = memo(({ addPoints }) => {
   }, [placed, sortedByYear, roundIdx]);
 
   const nextRound = useCallback(() => {
-    if (roundIdx + 1 >= ROUNDS.length) {
+    if (roundIdx + 1 >= rounds.length) {
       setResult({ allDone: true });
       return;
     }
@@ -95,7 +121,7 @@ const TimelineModule = memo(({ addPoints }) => {
     setSelected(null);
     setChecked(false);
     setResult(null);
-  }, [roundIdx]);
+  }, [roundIdx, rounds.length]);
 
   const reset = useCallback(() => {
     setRoundIdx(0);
@@ -115,16 +141,22 @@ const TimelineModule = memo(({ addPoints }) => {
       {/* Header */}
       <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-4 glass-dark px-6 py-2.5 rounded-2xl border border-white/10 shadow-xl">
         <Clock size={16} className="text-amber-400" />
-        <span className="text-[9px] font-black uppercase tracking-[0.3em] text-white/60">Líneas de Tiempo</span>
+        <span className="text-[9px] font-black uppercase tracking-[0.3em] text-white/60">
+          {lang === 'es' ? 'Líneas de Tiempo' : 'Timelines'}
+        </span>
         <div className="w-px h-4 bg-white/20" />
-        <span className="text-[9px] font-black uppercase tracking-widest text-amber-400">Ronda {roundIdx + 1}/{ROUNDS.length} — {round.label}</span>
+        <span className="text-[9px] font-black uppercase tracking-widest text-amber-400">
+          {lang === 'es' ? `Ronda ${roundIdx + 1}/${rounds.length} — ${round.label}` : `Round ${roundIdx + 1}/${rounds.length} — ${round.label}`}
+        </span>
         <div className="w-px h-4 bg-white/20" />
-        <span className="text-[9px] font-black uppercase tracking-widest text-emerald-400">Puntos: {score}</span>
+        <span className="text-[9px] font-black uppercase tracking-widest text-emerald-400">
+          {lang === 'es' ? `Puntos: ${score}` : `Points: ${score}`}
+        </span>
       </div>
 
       {/* Round dots */}
       <div className="absolute top-4 right-6 z-30 flex items-center gap-2">
-        {ROUNDS.map((_, i) => (
+        {rounds.map((_, i) => (
           <div key={i} className={`w-2 h-2 rounded-full ${roundResults[i]?.correct === 4 ? 'bg-emerald-400' : i === roundIdx ? 'bg-amber-400' : 'bg-white/20'}`} />
         ))}
       </div>
@@ -133,7 +165,13 @@ const TimelineModule = memo(({ addPoints }) => {
 
         {/* Instruction */}
         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/50">{round.desc}</p>
-        {selected && <p className="text-[10px] font-black text-cyan-400 animate-pulse">Seleccionado: {selected.emoji} {selected.label} — Ahora toca una casilla de la línea de tiempo</p>}
+        {selected && (
+          <p className="text-[10px] font-black text-cyan-400 animate-pulse">
+            {lang === 'es' 
+              ? `Seleccionado: ${selected.emoji} ${selected.label} — Ahora toca una casilla de la línea de tiempo` 
+              : `Selected: ${selected.emoji} ${selected.label} — Now touch a slot on the timeline`}
+          </p>
+        )}
 
         {/* Timeline slots */}
         <div className="w-full max-w-4xl">
@@ -143,7 +181,7 @@ const TimelineModule = memo(({ addPoints }) => {
 
             {sortedByYear.map((correctEv, slotIdx) => {
               const placedId = placed[slotIdx];
-              const placedEv = placedId ? ALL_EVENTS.find(e => e.id === placedId) : null;
+              const placedEv = placedId ? allEvents.find(e => e.id === placedId) : null;
               const isCorrect = checked && placedId === correctEv.id;
               const isWrong = checked && placedId && placedId !== correctEv.id;
 
@@ -154,7 +192,9 @@ const TimelineModule = memo(({ addPoints }) => {
                     <div className="text-[8px] font-black text-amber-400 -mb-1">{correctEv.year}</div>
                   )}
                   {!checked && (
-                    <div className="text-[8px] font-black text-white/20">Posición {slotIdx + 1}</div>
+                    <div className="text-[8px] font-black text-white/20">
+                      {lang === 'es' ? `Posición ${slotIdx + 1}` : `Position ${slotIdx + 1}`}
+                    </div>
                   )}
 
                   {/* Slot */}
@@ -172,7 +212,7 @@ const TimelineModule = memo(({ addPoints }) => {
                         <span className="font-black text-center">{placedEv.label}</span>
                         {checked && (
                           <span className={`text-[8px] font-black ${isCorrect ? 'text-emerald-300' : 'text-red-300'}`}>
-                            {isCorrect ? '✓ Correcto!' : `✗ Era ${correctEv.year}`}
+                            {isCorrect ? (lang === 'es' ? '✓ Correcto!' : '✓ Correct!') : (lang === 'es' ? `✗ Era ${correctEv.year}` : `✗ Was ${correctEv.year}`)}
                           </span>
                         )}
                       </>
@@ -192,7 +232,9 @@ const TimelineModule = memo(({ addPoints }) => {
         {/* Event cards (unplaced) */}
         <div className="w-full max-w-4xl">
           <p className="text-[8px] font-black uppercase tracking-[0.3em] text-white/30 mb-2 text-center">
-            {checked ? 'Eventos del período' : 'Toca un evento para seleccionarlo'}
+            {checked 
+              ? (lang === 'es' ? 'Eventos del período' : 'Events of the period') 
+              : (lang === 'es' ? 'Toca un evento para seleccionarlo' : 'Touch an event to select it')}
           </p>
           <div className="flex flex-wrap justify-center gap-3">
             {(checked ? events : unplaced).map(ev => {
@@ -213,7 +255,7 @@ const TimelineModule = memo(({ addPoints }) => {
                   </HandButton>
                   {checked && (
                     <HandButton onClick={() => setShowInfo(ev)} dwellMs={700} variant="default" className="px-3 py-1 text-[8px] !bg-white/5 !border-white/10 !rounded-lg">
-                      <Info size={10} /> Info
+                      <Info size={10} /> {lang === 'es' ? 'Info' : 'Info'}
                     </HandButton>
                   )}
                 </div>
@@ -226,16 +268,16 @@ const TimelineModule = memo(({ addPoints }) => {
         <div className="flex gap-3">
           {!checked && allPlaced && (
             <HandButton onClick={checkAnswer} dwellMs={700} variant="emerald" className="px-8 py-3 text-[11px]">
-              <CheckCircle2 size={14} /> Verificar orden
+              <CheckCircle2 size={14} /> {lang === 'es' ? 'Verificar orden' : 'Verify order'}
             </HandButton>
           )}
           {checked && result && !result.allDone && (
             <HandButton onClick={nextRound} dwellMs={700} variant="cyan" className="px-8 py-3 text-[11px]">
-              <ChevronRight size={14} /> {roundIdx + 1 < ROUNDS.length ? 'Siguiente ronda' : 'Ver resultados'}
+              <ChevronRight size={14} /> {roundIdx + 1 < rounds.length ? (lang === 'es' ? 'Siguiente ronda' : 'Next round') : (lang === 'es' ? 'Ver resultados' : 'View results')}
             </HandButton>
           )}
           <HandButton onClick={() => { setPlaced({}); setSelected(null); setChecked(false); setResult(null); }} dwellMs={800} variant="red" className="px-5 py-3 text-[10px]">
-            <RotateCcw size={12} /> Reiniciar ronda
+            <RotateCcw size={12} /> {lang === 'es' ? 'Reiniciar ronda' : 'Reset round'}
           </HandButton>
         </div>
       </div>
@@ -247,7 +289,9 @@ const TimelineModule = memo(({ addPoints }) => {
             className="absolute top-20 left-1/2 -translate-x-1/2 z-30">
             <div className={`px-6 py-3 rounded-2xl border shadow-xl text-center ${result.correct === 4 ? 'border-emerald-500/50 bg-emerald-900/40' : result.correct >= 2 ? 'border-amber-500/50 bg-amber-900/30' : 'border-red-500/50 bg-red-900/30'}`}>
               <p className="text-sm font-black uppercase tracking-widest">
-                {result.correct}/4 correctos — +{result.pts} pts {result.correct === 4 ? '🏆' : result.correct >= 2 ? '👍' : '📚'}
+                {lang === 'es' 
+                  ? `${result.correct}/4 correctos — +${result.pts} pts ${result.correct === 4 ? '🏆' : result.correct >= 2 ? '👍' : '📚'}`
+                  : `${result.correct}/4 correct — +${result.pts} pts ${result.correct === 4 ? '🏆' : result.correct >= 2 ? '👍' : '📚'}`}
               </p>
             </div>
           </motion.div>
@@ -269,7 +313,7 @@ const TimelineModule = memo(({ addPoints }) => {
               <span className="px-3 py-1 rounded-full bg-amber-500/20 text-amber-400 text-[9px] font-black uppercase tracking-widest">{showInfo.category}</span>
               <p className="text-[12px] text-white/70 leading-relaxed">{showInfo.desc}</p>
               <HandButton onClick={() => setShowInfo(null)} dwellMs={800} graceMs={500} variant="default" className="px-8 py-3 text-[10px] !bg-white/5">
-                <X size={12} /> Cerrar
+                <X size={12} /> {lang === 'es' ? 'Cerrar' : 'Close'}
               </HandButton>
             </motion.div>
           </motion.div>
@@ -284,14 +328,16 @@ const TimelineModule = memo(({ addPoints }) => {
             <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }}
               className="w-full max-w-md rounded-[36px] border border-white/10 bg-[#0a0a18]/96 shadow-2xl p-8 flex flex-col items-center text-center gap-5">
               <div className="text-7xl">📜</div>
-              <h2 className="text-3xl font-display font-black italic uppercase tracking-tight text-gradient">Líneas de Tiempo</h2>
+              <h2 className="text-3xl font-display font-black italic uppercase tracking-tight text-gradient">
+                {lang === 'es' ? 'Líneas de Tiempo' : 'Timelines'}
+              </h2>
               <p className="text-[12px] text-white/60 leading-relaxed">
-                Selecciona un evento histórico con tu mano y colócalo en el orden correcto de la línea de tiempo —
-                del <span className="text-amber-400 font-black">más antiguo</span> al <span className="text-orange-400 font-black">más reciente</span>.
-                Aprende historia de América y el mundo.
+                {lang === 'es' 
+                  ? <>Selecciona un evento histórico con tu mano y colócalo en el orden correcto de la línea de tiempo — del <span className="text-amber-400 font-black">más antiguo</span> al <span className="text-orange-400 font-black">más reciente</span>. Aprende historia de América y el mundo.</>
+                  : <>Select a historical event with your hand and place it in the correct order on the timeline — from the <span className="text-amber-400 font-black">oldest</span> to the <span className="text-orange-400 font-black">most recent</span>. Learn American and world history.</>}
               </p>
               <HandButton onClick={() => setShowIntro(false)} dwellMs={900} graceMs={600} variant="orange" className="px-10 py-4 text-sm">
-                <Clock size={16} /> ¡Explorar la historia!
+                <Clock size={16} /> {lang === 'es' ? '¡Explorar la historia!' : 'Explore history!'}
               </HandButton>
             </motion.div>
           </motion.div>
@@ -306,23 +352,36 @@ const TimelineModule = memo(({ addPoints }) => {
             <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }}
               className="w-full max-w-md rounded-[36px] border border-amber-500/40 bg-[#0a0a18]/96 shadow-2xl p-8 flex flex-col items-center text-center gap-5">
               <div className="text-7xl">🏛️</div>
-              <h2 className="text-3xl font-display font-black italic uppercase text-amber-400">¡Historiador Experto!</h2>
-              <p className="text-[13px] text-white/60">Puntuación total: <span className="text-amber-400 font-black">{score} pts</span></p>
+              <h2 className="text-3xl font-display font-black italic uppercase text-amber-400">
+                {lang === 'es' ? '¡Historiador Experto!' : 'Expert Historian!'}
+              </h2>
+              <p className="text-[13px] text-white/60">
+                {lang === 'es' ? `Puntuación total: ${score} pts` : `Total score: ${score} pts`}
+              </p>
               <div className="w-full space-y-2">
                 {roundResults.map((r, i) => (
                   <div key={i} className="flex items-center justify-between px-4 py-2 rounded-xl bg-white/5 border border-white/10">
-                    <span className="text-[10px] font-black text-white/60">Ronda {r.round}</span>
+                    <span className="text-[10px] font-black text-white/60">
+                      {lang === 'es' ? `Ronda ${r.round}` : `Round ${r.round}`}
+                    </span>
                     <span className="text-[10px] font-black text-amber-400">{r.correct}/4 ✓ — +{r.pts} pts</span>
                   </div>
                 ))}
               </div>
               <HandButton onClick={reset} dwellMs={900} graceMs={600} variant="orange" className="px-10 py-4 text-sm">
-                <RotateCcw size={16} /> Jugar de nuevo
+                <RotateCcw size={16} /> {lang === 'es' ? 'Jugar de nuevo' : 'Play Again'}
               </HandButton>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
+
+      <GameInstruction
+        messageEs="Toca un evento y luego toca una casilla vacía de la línea de tiempo"
+        messageEn="Touch an event, then touch an empty slot on the timeline"
+        lang={lang}
+        icon="🕰️"
+      />
     </div>
   );
 });

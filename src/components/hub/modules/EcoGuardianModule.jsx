@@ -3,26 +3,27 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Shield, Heart, Trophy, RefreshCw, Volume2, VolumeX, Sparkles } from 'lucide-react';
 import HandButton from '../HandButton';
 import LifeLostOverlay from '../LifeLostOverlay';
+import GameInstruction from '../GameInstruction';
 
 const ITEMS = [
-  { symbol: '🍎', name: 'Manzana',    type: 'ORGANIC' },
-  { symbol: '🍌', name: 'Plátano',    type: 'ORGANIC' },
-  { symbol: '🐟', name: 'Pescado',    type: 'ORGANIC' },
-  { symbol: '🍂', name: 'Hoja Seca',  type: 'ORGANIC' },
-  { symbol: '🧴', name: 'Botella',    type: 'RECYCLABLE' },
-  { symbol: '🥤', name: 'Lata',       type: 'RECYCLABLE' },
-  { symbol: '📦', name: 'Caja Cartón',type: 'RECYCLABLE' },
-  { symbol: '📰', name: 'Periódico',  type: 'RECYCLABLE' },
-  { symbol: '🔋', name: 'Batería',    type: 'HAZARDOUS' },
-  { symbol: '💡', name: 'Foco Roto',  type: 'HAZARDOUS' },
-  { symbol: '💨', name: 'Aerosol',    type: 'HAZARDOUS' },
-  { symbol: '☣️', name: 'Tóxico',    type: 'HAZARDOUS' }
+  { symbol: '🍎', nameEs: 'Manzana', nameEn: 'Apple',    type: 'ORGANIC' },
+  { symbol: '🍌', nameEs: 'Plátano', nameEn: 'Banana',   type: 'ORGANIC' },
+  { symbol: '🐟', nameEs: 'Pescado', nameEn: 'Fish',     type: 'ORGANIC' },
+  { symbol: '🍂', nameEs: 'Hoja Seca', nameEn: 'Dry Leaf', type: 'ORGANIC' },
+  { symbol: '🧴', nameEs: 'Botella', nameEn: 'Bottle',    type: 'RECYCLABLE' },
+  { symbol: '🥤', nameEs: 'Lata',       nameEn: 'Can',       type: 'RECYCLABLE' },
+  { symbol: '📦', nameEs: 'Caja Cartón', nameEn: 'Cardboard Box', type: 'RECYCLABLE' },
+  { symbol: '📰', nameEs: 'Periódico',  nameEn: 'Newspaper',  type: 'RECYCLABLE' },
+  { symbol: '🔋', nameEs: 'Batería',    nameEn: 'Battery',    type: 'HAZARDOUS' },
+  { symbol: '💡', nameEs: 'Foco Roto',  nameEn: 'Broken Bulb', type: 'HAZARDOUS' },
+  { symbol: '💨', nameEs: 'Aerosol',    nameEn: 'Aerosol',    type: 'HAZARDOUS' },
+  { symbol: '☣️', nameEs: 'Tóxico',     nameEn: 'Toxic Waste', type: 'HAZARDOUS' }
 ];
 
 const BINS = [
-  { id: 'ORGANIC',    name: 'Orgánico',   color: '#10B981', glow: 'rgba(16, 185, 129, 0.4)',  label: '🟢 Verde' },
-  { id: 'RECYCLABLE', name: 'Reciclable', color: '#3B82F6', glow: 'rgba(59, 130, 246, 0.4)',  label: '🔵 Azul' },
-  { id: 'HAZARDOUS',  name: 'Peligroso',  color: '#EF4444', glow: 'rgba(239, 110, 110, 0.4)', label: '🔴 Rojo' }
+  { id: 'ORGANIC',    nameEs: 'Orgánico', nameEn: 'Organic',    color: '#10B981', glow: 'rgba(16, 185, 129, 0.4)',  labelEs: '🟢 Verde', labelEn: '🟢 Green' },
+  { id: 'RECYCLABLE', nameEs: 'Reciclable', nameEn: 'Recyclable', color: '#3B82F6', glow: 'rgba(59, 130, 246, 0.4)',  labelEs: '🔵 Azul', labelEn: '🔵 Blue' },
+  { id: 'HAZARDOUS',  nameEs: 'Peligroso', nameEn: 'Hazardous',  color: '#EF4444', glow: 'rgba(239, 110, 110, 0.4)', labelEs: '🔴 Rojo', labelEn: '🔴 Red' }
 ];
 
 // Returns the bin ID if (pixelX, pixelY) is inside a bin's bounding rect (+ margin).
@@ -39,7 +40,7 @@ const hitTestBins = (pixelX, pixelY, margin = 30) => {
   return null;
 };
 
-const EcoGuardianModule = memo(({ addPoints }) => {
+const EcoGuardianModule = memo(({ addPoints, lang = 'es' }) => {
   const [score,        setScore]        = useState(0);
   const [lives,        setLives]        = useState(3);
   const [streak,       setStreak]       = useState(0);
@@ -64,13 +65,34 @@ const EcoGuardianModule = memo(({ addPoints }) => {
     lifeLost: 0    // contador de vidas perdidas (dispara la animación)
   });
 
+  const lastScoreRef = useRef(-1);
+  const lastLivesRef = useRef(-1);
+  const lastStreakRef = useRef(-1);
+  const lastGameStateRef = useRef('');
+  const lastLifeFlashRef = useRef(-1);
+
   const syncStates = useCallback(() => {
     const s = stateRef.current;
-    setScore(s.score);
-    setLives(s.lives);
-    setStreak(s.streak);
-    setGameState(s.gameState);
-    setLifeFlash(s.lifeLost);
+    if (s.score !== lastScoreRef.current) {
+      setScore(s.score);
+      lastScoreRef.current = s.score;
+    }
+    if (s.lives !== lastLivesRef.current) {
+      setLives(s.lives);
+      lastLivesRef.current = s.lives;
+    }
+    if (s.streak !== lastStreakRef.current) {
+      setStreak(s.streak);
+      lastStreakRef.current = s.streak;
+    }
+    if (s.gameState !== lastGameStateRef.current) {
+      setGameState(s.gameState);
+      lastGameStateRef.current = s.gameState;
+    }
+    if (s.lifeLost !== lastLifeFlashRef.current) {
+      setLifeFlash(s.lifeLost);
+      lastLifeFlashRef.current = s.lifeLost;
+    }
   }, []);
 
   const addPointsRef    = useRef(addPoints);
@@ -190,6 +212,8 @@ const EcoGuardianModule = memo(({ addPoints }) => {
       }
     } else {
       s.lives  = Math.max(0, s.lives - 1);
+      s.score  = Math.max(0, s.score - 10);
+      addPointsRef.current(-10);
       s.lifeLost += 1;
       s.streak = 0;
       playSoundRef.current('error');
@@ -273,6 +297,8 @@ const EcoGuardianModule = memo(({ addPoints }) => {
       const filteredItems = nextItems.filter(item => {
         if (item.y > 102) {
           s.lives  = Math.max(0, s.lives - 1);
+          s.score  = Math.max(0, s.score - 10);
+          addPointsRef.current(-10);
           s.lifeLost += 1;
           s.streak = 0;
           playSoundRef.current('error');
@@ -444,7 +470,7 @@ const EcoGuardianModule = memo(({ addPoints }) => {
             >
               <span className="text-5xl leading-none">{item.symbol}</span>
               <span className="text-[8px] font-black uppercase tracking-wider text-white/50 leading-none mt-1.5">
-                {item.name}
+                {lang === 'es' ? item.nameEs : item.nameEn}
               </span>
             </motion.div>
           </div>
@@ -472,9 +498,11 @@ const EcoGuardianModule = memo(({ addPoints }) => {
               className="text-sm font-display font-black italic uppercase tracking-wider z-10"
               style={{ color: bin.color }}
             >
-              {bin.name}
+              {lang === 'es' ? bin.nameEs : bin.nameEn}
             </span>
-            <span className="text-[8px] font-black text-white/30 uppercase tracking-widest z-10">{bin.label}</span>
+            <span className="text-[8px] font-black text-white/30 uppercase tracking-widest z-10">
+              {lang === 'es' ? bin.labelEs : bin.labelEn}
+            </span>
           </motion.div>
         ))}
       </div>
@@ -506,25 +534,26 @@ const EcoGuardianModule = memo(({ addPoints }) => {
           >
             <div className="mb-6 text-6xl animate-bounce">🌍☠️</div>
             <h2 className="text-5xl font-display font-black text-gradient uppercase italic tracking-tighter mb-2">
-              Fin de Partida
+              {lang === 'es' ? 'Fin de Partida' : 'Game Over'}
             </h2>
             <p className="text-white/60 font-black uppercase tracking-[0.2em] text-xs mb-8">
-              Tu puntaje final es: {score} Puntos
+              {lang === 'es' ? `Tu puntaje final es: ${score} Puntos` : `Your final score is: ${score} Points`}
             </p>
             <HandButton onClick={resetGame} className="px-12 py-5 text-xs max-w-xs w-full" variant="emerald" dwellMs={800} graceMs={600}>
-              <RefreshCw size={14} className="mr-2" /> VOLVER A INTENTAR
+              <RefreshCw size={14} className="mr-2" /> {lang === 'es' ? 'VOLVER A INTENTAR' : 'TRY AGAIN'}
             </HandButton>
           </motion.div>
         )}
       </AnimatePresence>
 
       {gameState === 'PLAYING' && (
-        <div className="absolute bottom-[152px] left-1/2 -translate-x-1/2 flex items-center gap-4 glass px-6 py-2.5 rounded-[20px] border border-white/10 animate-pulse z-30 whitespace-nowrap">
-          <span className="text-xl">🤏</span>
-          <p className="text-[9px] font-black uppercase tracking-[0.2em] text-white/50 italic">
-            Pellizca la basura · llévala al tacho correcto
-          </p>
-        </div>
+        <GameInstruction
+          lang={lang}
+          messageEs="Pellizca la basura y llévala al contenedor correcto"
+          messageEn="Pinch the waste and drop it in the correct bin"
+          icon="🗑️"
+          position="top"
+        />
       )}
 
       {/* Feedback al perder una vida */}

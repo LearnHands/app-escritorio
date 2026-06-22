@@ -1,5 +1,85 @@
 # Registro de cambios — LearnHands
 
+## [4.1.2] — 2026-06-15 · Cierre de Sesión para Docentes y Compilación Limpia
+
+### 🔑 Sesiones y Control de Usuarios
+- **Cerrar Sesión (Docente):** Se habilitó un botón gestual de **Cerrar Sesión** en la pantalla principal (`HOME`) exclusivo para usuarios con rol de profesor (`userRole === 'teacher'`). Esto permite limpiar las credenciales guardadas en local y regresar a la pantalla de login sin necesidad de reiniciar la aplicación.
+
+---
+
+## [4.1.1] — 2026-06-15 · Corrección de Fallas Críticas, Diagnósticos y Rendimiento
+
+### 🛠️ Corrección de Fallas Críticas de Runtime
+- **Sistema Solar:** Se solucionó el error `ReferenceError: useCallback is not defined` al importar correctamente `useCallback` en React en [SolarSystemModule.jsx](file:///c:/laragon/www/EduMotion/src/components/hub/modules/SolarSystemModule.jsx).
+- **Sílabas:** Se corrigió el error `ReferenceError: setParticles is not defined` al reemplazar la llamada al set de estado inexistente por la asignación directa sobre la referencia autoritativa de físicas `s.particles = []` en [SyllablesModule.jsx](file:///c:/laragon/www/EduMotion/src/components/hub/modules/SyllablesModule.jsx).
+- **Puesta en Marcha (Startup):** Se resolvió el error `ReferenceError: useCallback is not defined` en el arranque de la aplicación al agregar el import de `useCallback` en [SystemHub.jsx](file:///c:/laragon/www/EduMotion/src/SystemHub.jsx).
+
+### 🩺 Contención de Fallas y Logs de Diagnóstico
+- **Barrera de Seguridad (Error Boundary):** Se diseñó el componente [GameErrorBoundary.jsx](file:///c:/laragon/www/EduMotion/src/components/hub/GameErrorBoundary.jsx) (ubicado por fuera del Suspense de carga en [SystemHub.jsx](file:///c:/laragon/www/EduMotion/src/SystemHub.jsx)) para aislar fallas fatales de renderizado en cualquier juego. En lugar de una pantalla en negro, se le presenta al usuario una pantalla informativa de error con la traza de ejecución del fallo y la opción de volver al menú.
+- **SVGs en Línea para Diagnósticos:** Se reescribió la barrera de error para utilizar SVGs en línea, eliminando dependencias de importación de Lucide que pudiesen causar crashes por diferencias de nomenclatura de versiones.
+- **Monitoreo de Excepciones:** Se agregaron listeners globales de error (`window.addEventListener('error')`) y bloques de contención `try/catch` en los bucles de actualización física del *Sistema Solar* y de *Sílabas* para capturar y reportar cualquier falla de runtime directamente en la auditoría local (`localStorage`) mediante `addLocalLog`.
+
+### 🎮 Ajustes de Interacción y Usabilidad
+- **Verbos Irregulares:** Se modificó la colisión en [IrregularVerbsModule.jsx](file:///c:/laragon/www/EduMotion/src/components/hub/modules/IrregularVerbsModule.jsx) para no soltar ni rebotar forzosamente la burbuja de la mano al tocar un cuadro de destino incorrecto. Se restará únicamente una vida al tocar por primera vez el cuadro incorrecto (y otra en caso de re-entrada). Asimismo, se bloquea la colocación de un verbo correcto en su cuadro correspondiente si éste se encuentra cruzado o sobrepuesto sobre el cuadro incorrecto, obligando al usuario a arrastrarlo hacia afuera antes de clasificarlo.
+
+### ⚡ Rendimiento Superior en Pantalla Gestual
+- **Remoción de Backdrop Blur:** Se quitó la clase de filtro pesado `backdrop-blur-md` en el overlay de transición gestual en [SystemHub.jsx](file:///c:/laragon/www/EduMotion/src/SystemHub.jsx), lo cual eliminó el cuello de botella que causaba caídas severas de FPS sobre el canvas de seguimiento de manos.
+- **Remoción de Transición CSS Conflictiva:** Se eliminó la transición CSS en la barra de progreso del tutorial para evitar tirones y desincronizaciones con el frame loop del navegador.
+
+---
+
+## [4.1.0] — 2026-06-14 · Optimización Mayor de Rendimiento y CPU
+
+### ⚡ Reducción Crítica de Re-renders de React
+- **Desacoplamiento de physical loop y renderizado:** Evitamos actualizaciones incondicionales de `setState` a 60 FPS dentro de los bucles `requestAnimationFrame`, lo cual eliminó el cuello de botella que causaba tirones y lag en el seguimiento de manos.
+- **Mapeo directo de elementos en el DOM:**
+  - **Burbujas Flotantes:** En los juegos de *Inglés*, *Verbos Irregulares*, *Sílabas* y *Abaco Matemático*, las burbujas se renderizan estáticamente en React, y sus coordenadas (`style.left`, `style.top`, `style.transform`) e interacción (`isGrabbed`) se modifican directamente a través del DOM en cada frame.
+  - **Anillo de Dwell de Anatomía:** En `AnatomyModule.jsx`, se eliminó el estado de carga React a 60 FPS, manipulando la propiedad SVG `stroke-dashoffset` directamente en el DOM.
+  - **Cursor de Tarjetas:** En `SolarSystemModule.jsx`, se removió el estado condicional de renderizado, y el cursor personalizado de la tarjeta informativa se posiciona directamente mediante DOM.
+- **Partículas en Canvas de Alto Rendimiento:**
+  - Las partículas de éxito/error en los juegos de lenguaje (*Inglés*, *Verbos Irregulares* y *Sílabas*) se movieron a un lienzo `<canvas>` HTML5 dedicado acelerado por hardware, eliminando la creación/destrucción masiva de nodos DOM.
+- **Throttles y Guardas Inteligentes:**
+  - En `AtomsModule.jsx`, la física de los átomos se calcula a 60 FPS con refs, pero la actualización del estado de temperatura de React está limitada (throttled) a 15 FPS.
+  - En `BricksModule.jsx` y `EcoGuardianModule.jsx`, la sincronización de vidas, puntajes y estados con React ahora está guardada mediante referencias mutables para re-renderizar la UI únicamente cuando los valores numéricos cambien en el motor de físicas.
+
+---
+
+## [4.0.0] — 2026-06-14 · Circuitos Sandbox, Dashboard de Métricas y Correcciones
+
+### 🆕 Simulador Sandbox de Circuitos (`CircuitsModule.jsx`)
+- Reemplazo completo del módulo tradicional de circuitos por un **Sandbox Interactivo de Simulación Eléctrica**.
+- **Panel de Componentes:** Posibilidad de añadir baterías, LEDs, resistencias, interruptores y condensadores al lienzo.
+- **Lógica de Conexión:** Dwell-click sobre las terminales de los componentes para tender cables flexibles SVG de forma intuitiva.
+- **Lógica de Movimiento:** Modo de arrastre y reposicionamiento para crear diagramas de circuitos limpios.
+- **Motor de Simulación Física:**
+  - Validación de circuitos abiertos y cerrados usando algoritmos de búsqueda en grafos.
+  - Alerta de **Cortocircuito** si se conecta la batería directamente sin una resistencia o LED.
+  - Alerta de **LED Quemado** si el LED se conecta directo sin una resistencia limitadora de corriente.
+  - Animación de partículas y destellos luminosos en cables activos al cerrar el circuito de forma correcta.
+
+### 📊 Dashboard de Métricas y Analíticas en Landing Page (HOME)
+- Integración de un panel analítico en la pantalla de inicio, accesible mediante el botón de estadísticas.
+- Métricas en tiempo real basadas en la base de datos local (`learnhands_metrics_history` y `learnhands_ux_history`).
+- Gráficos interactivos SVG para:
+  - Puntajes Promedio por Juego.
+  - Línea de Tiempo de Actividad (Sesiones).
+  - Popularidad de Módulos (Uso).
+  - Análisis de Precisión y Autonomía UX.
+- Capacidad de filtrar métricas por alumno específico.
+
+### 📶 Modo Offline: Seguridad en Inicio de Sesión
+- Detección automática del estado de conexión a Internet (`navigator.onLine`).
+- Si la aplicación de escritorio se inicia **sin conexión a internet**, se bloquea/deshabilita el inicio de sesión como **Profesor** (ya que requiere sincronización con la base de datos o almacenamiento en la nube).
+- Acceso exclusivo como **Estudiante** en modo offline, con advertencia en interfaz ("⚠️ Sin conexión: Solo acceso como Estudiante").
+
+### 🔧 Correcciones de Interacción y Overlays
+- **Bloqueo de Overlays:** Bloqueo de colisiones y clicks/hovers de fondo mientras existan overlays informativos en `AnatomyModule`, `CodingBlocksModule`, `AtomsModule` y `AccountingModule`.
+- **Bloques de Código (`CodingBlocksModule`):**
+  - Avance de nivel automático (timeout de 2 segundos) al completar con éxito el algoritmo.
+  - Redistribución de botones de control (Ejecutar, Borrar, Reiniciar, Pista) en una rejilla de 2x2 más espaciosa y con mayor dwell time (`dwellMs=900`) para evitar activaciones dobles en pantallas táctiles.
+
+---
+
 ## [3.0.0] — 2026-06-03 · Lanzamiento mayor
 
 ### 🆕 Seis nuevos módulos educativos · Total: 17 módulos

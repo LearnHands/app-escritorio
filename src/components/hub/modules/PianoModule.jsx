@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Volume2, VolumeX } from 'lucide-react';
+import GameInstruction from '../GameInstruction';
 
 const OCTAVES = 2;
 const WHITE_NOTES = ['Do', 'Re', 'Mi', 'Fa', 'Sol', 'La', 'Si'];
@@ -18,7 +19,7 @@ const FREQS = {
 // Fingertip landmark indices (thumb=4, index=8, middle=12, ring=16, pinky=20)
 const FINGERTIPS = [4, 8, 12, 16, 20];
 
-const PianoModule = memo(({ addPoints, videoRef }) => {
+const PianoModule = memo(({ addPoints, videoRef, lang = 'es' }) => {
   const [activeNotes, setActiveNotes] = useState(new Set());
   const [soundEnabled, setSoundEnabled] = useState(true);
 
@@ -26,6 +27,8 @@ const PianoModule = memo(({ addPoints, videoRef }) => {
   const activeOscsRef   = useRef({});   // { note → { osc, gainNode } }
   const releasingRef    = useRef(new Set()); // notes in release phase
   const keyRectsRef     = useRef([]);   // [{ note, rect, isBlack }]
+  const lastTriggeredRef = useRef({}); // { note: timestamp }
+  const lastStoppedRef  = useRef({});   // { note: timestamp }
   const addPointsRef    = useRef(addPoints);
   addPointsRef.current  = addPoints;
   const soundEnabledRef = useRef(soundEnabled);
@@ -49,6 +52,11 @@ const PianoModule = memo(({ addPoints, videoRef }) => {
   const startNote = (note) => {
     if (!soundEnabledRef.current) return;
     if (activeOscsRef.current[note] || releasingRef.current.has(note)) return;
+
+    // Calibración de retardos: evitar reiniciar notas demasiado rápido (cooldown de 200ms)
+    const nowTime = Date.now();
+    if (nowTime - (lastStoppedRef.current[note] || 0) < 200) return;
+    lastTriggeredRef.current[note] = nowTime;
 
     try {
       const ctx  = getAudioCtx();
@@ -87,6 +95,11 @@ const PianoModule = memo(({ addPoints, videoRef }) => {
     const entry = activeOscsRef.current[note];
     if (!entry) return;
     if (releasingRef.current.has(note)) return;
+
+    // Calibración de retardos: mantener la nota activa al menos 150ms antes de apagar
+    const nowTime = Date.now();
+    if (nowTime - (lastTriggeredRef.current[note] || 0) < 150) return;
+    lastStoppedRef.current[note] = nowTime;
 
     releasingRef.current.add(note);
     delete activeOscsRef.current[note];
@@ -168,7 +181,14 @@ const PianoModule = memo(({ addPoints, videoRef }) => {
             for (const key of rects) {
               if (!key.isBlack) continue;
               const r = key.rect;
-              if (px >= r.left && px <= r.right && py >= r.top && py <= r.bottom) {
+              
+              // Optimización de área: reducir ancho un 15% por cada lado
+              const w = r.right - r.left;
+              const pad = w * 0.15;
+              const left = r.left + pad;
+              const right = r.right - pad;
+
+              if (px >= left && px <= right && py >= r.top && py <= r.bottom) {
                 frameNotes.add(key.note);
                 hit = true;
                 break;
@@ -178,7 +198,14 @@ const PianoModule = memo(({ addPoints, videoRef }) => {
             for (const key of rects) {
               if (key.isBlack) continue;
               const r = key.rect;
-              if (px >= r.left && px <= r.right && py >= r.top && py <= r.bottom) {
+
+              // Optimización de área: reducir ancho un 15% por cada lado
+              const w = r.right - r.left;
+              const pad = w * 0.15;
+              const left = r.left + pad;
+              const right = r.right - pad;
+
+              if (px >= left && px <= right && py >= r.top && py <= r.bottom) {
                 frameNotes.add(key.note);
                 break;
               }
@@ -256,7 +283,12 @@ const PianoModule = memo(({ addPoints, videoRef }) => {
                     : 'bg-gradient-to-b from-white to-gray-100 hover:from-gray-50'
                 }`}
               >
-                <span className={`text-[9px] font-black uppercase ${isActive ? 'text-cyan-800' : 'text-black/30'}`}>
+                {/* Target guide area */}
+                <div className={`absolute inset-x-[15%] top-4 bottom-12 rounded-lg border border-dashed transition-all ${isActive ? 'border-cyan-500/40 bg-cyan-500/10' : 'border-black/5 bg-transparent'} flex items-center justify-center pointer-events-none`}>
+                  <div className={`w-1.5 h-1.5 rounded-full transition-colors ${isActive ? 'bg-cyan-500/50' : 'bg-black/5'}`} />
+                </div>
+
+                <span className={`text-[9px] font-black uppercase ${isActive ? 'text-cyan-800' : 'text-black/30'} z-10`}>
                   {n}
                 </span>
               </div>
@@ -271,7 +303,12 @@ const PianoModule = memo(({ addPoints, videoRef }) => {
                       : 'bg-gradient-to-b from-gray-900 to-gray-800'
                   }`}
                 >
-                  <span className={`text-[7px] font-black ${blackActive ? 'text-white' : 'text-white/20'}`}>
+                  {/* Target guide area */}
+                  <div className={`absolute inset-x-[15%] top-2 bottom-8 rounded-md border border-dashed transition-all ${blackActive ? 'border-purple-300/40 bg-purple-300/15' : 'border-white/10 bg-transparent'} flex items-center justify-center pointer-events-none`}>
+                    <div className={`w-1 h-1 rounded-full transition-colors ${blackActive ? 'bg-purple-300/50' : 'bg-white/10'}`} />
+                  </div>
+
+                  <span className={`text-[7px] font-black ${blackActive ? 'text-white' : 'text-white/20'} z-10`}>
                     {blackNote.replace('2', '')}
                   </span>
                 </div>
@@ -313,16 +350,23 @@ const PianoModule = memo(({ addPoints, videoRef }) => {
               className="flex flex-col items-center gap-6"
             >
               <div className="text-7xl animate-bounce-slow">🎹</div>
-              <p className="text-2xl font-display font-black text-white/40 italic tracking-[0.2em] uppercase">
-                Acerca los dedos a las teclas
+              <p className="text-2xl font-display font-black text-white/40 italic tracking-[0.2em] uppercase text-center px-4">
+                {lang === 'es' ? 'Acerca los dedos a las teclas' : 'Bring your fingers close to the keys'}
               </p>
-              <p className="text-[10px] font-black text-white/25 uppercase tracking-[0.3em]">
-                Cada dedo toca una nota · mantén pulsado para sostenerla
+              <p className="text-[10px] font-black text-white/25 uppercase tracking-[0.3em] text-center px-4">
+                {lang === 'es' ? 'Cada dedo toca una nota · mantén pulsado para sostenerla' : 'Each finger plays a note · hold to sustain'}
               </p>
             </motion.div>
           )}
         </AnimatePresence>
       </div>
+
+      <GameInstruction
+        messageEs="Acerca los dedos a las teclas para tocar el piano"
+        messageEn="Move your fingers close to the keys to play the piano"
+        lang={lang}
+        icon="🎹"
+      />
     </div>
   );
 });

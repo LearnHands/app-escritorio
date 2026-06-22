@@ -20,7 +20,8 @@ import React, { useState, useEffect, useRef } from 'react';
 const HandButton = ({
   children, onClick,
   dwellMs = 1000, cooldownMs = 800, graceMs = 0, hitMargin = 32,
-  className = "", variant = "purple",
+  className = "", variant = "purple", disabled = false,
+  onHoverChange
 }) => {
   const [isHovered, setIsHovered] = useState(false);
   const [progress, setProgress]   = useState(0);
@@ -41,6 +42,8 @@ const HandButton = ({
   const cooldownRefMs= useRef(cooldownMs);cooldownRefMs.current= cooldownMs;
   const graceMsRef   = useRef(graceMs);   graceMsRef.current   = graceMs;
   const hitMarginRef = useRef(hitMargin); hitMarginRef.current = hitMargin;
+  const disabledRef  = useRef(disabled);  disabledRef.current  = disabled;
+  const onHoverChangeRef = useRef(onHoverChange); onHoverChangeRef.current = onHoverChange;
 
   useEffect(() => {
     let mounted = true;
@@ -48,11 +51,17 @@ const HandButton = ({
     const FRAME_MS = 33;  // ~30fps — la mitad de carga que correr a 60fps
 
     const fire = () => {
+      if (window.currentSessionUX) {
+        window.currentSessionUX.interactionCount = (window.currentSessionUX.interactionCount || 0) + 1;
+        window.currentSessionUX.consecutiveSuccessCount = (window.currentSessionUX.consecutiveSuccessCount || 0) + 1;
+        window.currentSessionUX.lastInteractionTime = Date.now();
+      }
       onClickRef.current?.();
       progressRef.current  = 0;
       isHoveredRef.current = false;
       setProgress(0);
       setIsHovered(false);
+      onHoverChangeRef.current?.(false); // Notify hover end on fire
       cooldownRef.current  = true;
       mustLeaveRef.current = true;  // hay que salir antes de volver a llenar
       setTimeout(() => { cooldownRef.current = false; }, cooldownRefMs.current);
@@ -67,9 +76,14 @@ const HandButton = ({
       const dt = now - lastRunRef.current;
       lastRunRef.current = now;
 
+      if (disabledRef.current) {
+        if (isHoveredRef.current) { isHoveredRef.current = false; setIsHovered(false); }
+        if (progressRef.current !== 0) { progressRef.current = 0; setProgress(0); }
+        return;
+      }
       if (cooldownRef.current) return;
-      // Pause dwell while hand-scroll is active (pinch-drag in menu)
-      if (window.isHandScrolling) {
+      // Pause dwell while hand-scroll or gesture onboarding overlay is active
+      if (window.isHandScrolling || window.showGameTutorialActive) {
         if (isHoveredRef.current) { isHoveredRef.current = false; setIsHovered(false); }
         if (progressRef.current !== 0) { progressRef.current = 0; setProgress(0); }
         return;
@@ -88,7 +102,13 @@ const HandButton = ({
       const r = rectRef.current;
       const m = hitMarginRef.current;
 
-      let over = false, pinchOver = false;
+      // Inicializar el registro de la frame actual para botones hovered
+      if (window.lastHoverFrameTime !== now) {
+        window.lastHoverFrameTime = now;
+        window.hoveredButtonsThisFrame = [];
+      }
+
+      let over = false, pinchOver = false, minCursorDist = Infinity;
       const { cursors = [], gestures = [] } = window.latestHandData || {};
       for (let i = 0; i < cursors.length; i++) {
         const c = cursors[i];
@@ -96,6 +116,12 @@ const HandButton = ({
         if (c.x >= r.left - m && c.x <= r.right + m && c.y >= r.top - m && c.y <= r.bottom + m) {
           over = true;
           if (gestures[i]?.isPinching) pinchOver = true;
+          const centerX = r.left + r.width / 2;
+          const centerY = r.top + r.height / 2;
+          const d = Math.hypot(c.x - centerX, c.y - centerY);
+          if (d < minCursorDist) {
+            minCursorDist = d;
+          }
         }
       }
 
@@ -109,22 +135,56 @@ const HandButton = ({
         }
       }
 
-      if (over) {
-        const speed = pinchOver ? 2 : 1;   // pinza llena 2× más rápido
-        if (!isHoveredRef.current) {
-          isHoveredRef.current = true;
-          setIsHovered(true);
-          progressRef.current = 0;
-        } else {
-          progressRef.current = Math.min(progressRef.current + (dt / dwellMsRef.current) * speed, 1);
+      const handleHoverState = (isWinner, winnerPinch, deltaT) => {
+        if (!mounted) return;
+        if (isWinner) {
+          const speed = winnerPinch ? 2 : 1;   // pinza llena 2× más rápido
+          if (!isHoveredRef.current) {
+            isHoveredRef.current = true;
+            setIsHovered(true);
+            onHoverChangeRef.current?.(true); // Notify hover start
+            progressRef.current = 0;
+            setProgress(0);
+          } else {
+            progressRef.current = Math.min(progressRef.current + (deltaT / dwellMsRef.current) * speed, 1);
+            setProgress(progressRef.current);
+            if (progressRef.current >= 1) { fire(); }
+          }
+        } else if (isHoveredRef.current) {
+          // Decaimiento al salir o no ganar la frame
+          progressRef.current = Math.max(progressRef.current - (deltaT / dwellMsRef.current) * 1.5, 0);
           setProgress(progressRef.current);
-          if (progressRef.current >= 1) { fire(); return; }
+          if (progressRef.current <= 0) {
+            isHoveredRef.current = false;
+            setIsHovered(false);
+            onHoverChangeRef.current?.(false); // Notify hover end
+          }
         }
-      } else if (isHoveredRef.current) {
-        // Decaimiento al salir
-        progressRef.current = Math.max(progressRef.current - (dt / dwellMsRef.current) * 1.5, 0);
-        setProgress(progressRef.current);
-        if (progressRef.current <= 0) { isHoveredRef.current = false; setIsHovered(false); }
+      };
+
+      if (over) {
+        if (!btn.handButtonId) {
+          btn.handButtonId = Math.random().toString(36).substr(2, 9);
+        }
+        const buttonId = btn.handButtonId;
+        window.hoveredButtonsThisFrame.push({
+          id: buttonId,
+          dist: minCursorDist,
+          pinchOver,
+          dt
+        });
+
+        // Resolvemos el ganador en un microtask al final del tick de la frame
+        Promise.resolve().then(() => {
+          if (window.hoveredButtonsThisFrame && window.hoveredButtonsThisFrame.length > 0) {
+            window.hoveredButtonsThisFrame.sort((a, b) => a.dist - b.dist);
+            const winner = window.hoveredButtonsThisFrame[0];
+            const isWinner = winner.id === buttonId;
+            handleHoverState(isWinner, winner.pinchOver, winner.dt);
+          }
+        });
+      } else {
+        handleHoverState(false, false, dt);
       }
     };
 

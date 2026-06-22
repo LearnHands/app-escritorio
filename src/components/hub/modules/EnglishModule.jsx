@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Star, Trophy, ChevronUp, Volume2, VolumeX } from 'lucide-react';
 import HandButton from '../HandButton';
+import GameInstruction from '../GameInstruction';
 
 // ── Level data ─────────────────────────────────────────────────────────────────
 // answers: array — Level 1-2 have 1 blank, Level 3 has 2 blanks per sentence
@@ -70,18 +71,40 @@ const DISTRACTORS = [
    'THIS', 'NEXT', 'HERE', 'WHEN', 'LIKE', 'THREE', 'MY', 'LAST', 'DONE', 'SEEN', 'DID', 'AM'],
 ];
 
+// Fuerza la pronunciaci\u00f3n en ingl\u00e9s seleccionando explicitamente una voz en-US/en-GB
 const SpeechSynth = (text) => {
   if (!window.speechSynthesis) return;
   try {
-    const u = new SpeechSynthesisUtterance(text.toLowerCase());
-    u.lang = 'en-US'; u.rate = 0.85;
     window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(u);
+
+    const doSpeak = () => {
+      const voices = window.speechSynthesis.getVoices();
+      // Prioridad: en-US > en-GB > cualquier voz que empiece con 'en'
+      const enVoice =
+        voices.find(v => v.lang === 'en-US') ||
+        voices.find(v => v.lang === 'en-GB') ||
+        voices.find(v => v.lang.startsWith('en'));
+
+      const u = new SpeechSynthesisUtterance(text.toLowerCase());
+      u.lang = 'en-US';
+      u.rate = 0.85;
+      if (enVoice) u.voice = enVoice;
+      window.speechSynthesis.speak(u);
+    };
+
+    // Las voces se cargan asincronamente en Chrome/Electron
+    const voices = window.speechSynthesis.getVoices();
+    if (voices.length > 0) {
+      doSpeak();
+    } else {
+      window.speechSynthesis.addEventListener('voiceschanged', doSpeak, { once: true });
+      setTimeout(doSpeak, 1000); // Fallback si el evento no llega
+    }
   } catch { /* ignore */ }
 };
 
 // ── Component ──────────────────────────────────────────────────────────────────
-const EnglishModule = memo(({ addPoints }) => {
+const EnglishModule = memo(({ addPoints, lang = 'es' }) => {
   const [levelIdx,     setLevelIdx]     = useState(0);
   const [sentenceIdx,  setSentenceIdx]  = useState(0);
   const [filledSlots,  setFilledSlots]  = useState([null]);
@@ -90,9 +113,11 @@ const EnglishModule = memo(({ addPoints }) => {
   const [streak,       setStreak]       = useState(0);
   const [totalCorrect, setTotalCorrect] = useState(0);
   const [bubbles,      setBubbles]      = useState([]);
-  const [particles,    setParticles]    = useState([]);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [feedbackMsg,  setFeedbackMsg]  = useState(null);
+
+  const particleCanvasRef = useRef(null);
+  const lastBubblesLengthRef = useRef(-1);
 
   const addPointsRef = useRef(addPoints); addPointsRef.current = addPoints;
   const soundRef     = useRef(soundEnabled); soundRef.current = soundEnabled;
@@ -109,7 +134,7 @@ const EnglishModule = memo(({ addPoints }) => {
   const stateRef = useRef({
     levelIdx: 0, sentenceIdx: 0, usedIndices: new Set(),
     isCorrect: false, dragging: {}, bubbles: [],
-    filledSlots: [null],
+    filledSlots: [null], particles: []
   });
   const bubbleIdRef = useRef(0);
   const frameRef    = useRef(null);
@@ -117,6 +142,27 @@ const EnglishModule = memo(({ addPoints }) => {
 
   const currentLevel    = LEVELS[levelIdx];
   const currentSentence = currentLevel.sentences[sentenceIdx];
+
+  const levelLabels = {
+    es: ['Básico', 'Intermedio', 'Avanzado'],
+    en: ['Basic', 'Intermediate', 'Advanced']
+  };
+
+  const levelDescriptions = {
+    es: [
+      '1 espacio en blanco · verbos y adjetivos simples',
+      '1 espacio en blanco · tiempo pasado y oraciones más largas',
+      '2 espacios en blanco · tiempos perfectos, pasiva y condicionales'
+    ],
+    en: [
+      '1 blank · simple verbs & adjectives',
+      '1 blank · past tense & longer sentences',
+      '2 blanks · perfect tenses, passive & conditionals'
+    ]
+  };
+
+  const currentLabel = levelLabels[lang][levelIdx];
+  const currentDescription = levelDescriptions[lang][levelIdx];
 
   // ── Audio ──────────────────────────────────────────────────────────────────
   const playSound = useCallback((type) => {
@@ -155,13 +201,14 @@ const EnglishModule = memo(({ addPoints }) => {
   }, []);
 
   const spawnParticles = useCallback(() => {
+    const s = stateRef.current;
     const colors = ['#34D399', '#A78BFA', '#60A5FA', '#FBBF24', '#F472B6'];
-    setParticles(Array.from({ length: 36 }, () => ({
+    s.particles = Array.from({ length: 36 }, () => ({
       id: Math.random(), x: 50 + (Math.random() - 0.5) * 30, y: 40 + (Math.random() - 0.5) * 10,
       vx: (Math.random() - 0.5) * 14, vy: -6 - Math.random() * 10,
       color: colors[Math.floor(Math.random() * colors.length)],
       size: 12 + Math.random() * 18, rotation: Math.random() * 360, spin: (Math.random() - 0.5) * 18,
-    })));
+    }));
   }, []);
 
   // ── Pick next sentence ─────────────────────────────────────────────────────
@@ -184,7 +231,7 @@ const EnglishModule = memo(({ addPoints }) => {
     setIsCorrect(false);
     setFilledSlots([...fresh]);
     setBubbles([]);
-    setParticles([]);
+    s.particles = [];
   }, []);
 
   // ── Spawn bubble ───────────────────────────────────────────────────────────
@@ -195,14 +242,25 @@ const EnglishModule = memo(({ addPoints }) => {
     const answers  = sentData.answers;
     const dist     = DISTRACTORS[s.levelIdx];
     const unfilled = answers.filter((_, i) => s.filledSlots[i] === null);
-    const isRight  = Math.random() < 0.55 && unfilled.length > 0;
+    
+    // Evitar que se dupliquen burbujas activas en pantalla
+    const activeTexts = s.bubbles.map(b => b.text);
+    const availableUnfilled = unfilled.filter(w => !activeTexts.includes(w));
+    
+    const isRight  = Math.random() < 0.45 && availableUnfilled.length > 0;
     let text;
     if (isRight) {
-      text = unfilled[Math.floor(Math.random() * unfilled.length)];
+      text = availableUnfilled[Math.floor(Math.random() * availableUnfilled.length)];
     } else {
-      const pool = dist.filter(w => !answers.includes(w));
-      text = pool[Math.floor(Math.random() * pool.length)] ?? dist[0];
+      const pool = dist.filter(w => !answers.includes(w) && !activeTexts.includes(w));
+      if (pool.length > 0) {
+        text = pool[Math.floor(Math.random() * pool.length)];
+      } else {
+        const fallbackPool = dist.filter(w => !activeTexts.includes(w));
+        text = fallbackPool[Math.floor(Math.random() * fallbackPool.length)] ?? dist[0];
+      }
     }
+    
     bubbleIdRef.current += 1;
     const b = {
       id: bubbleIdRef.current, text,
@@ -236,12 +294,50 @@ const EnglishModule = memo(({ addPoints }) => {
       const s  = stateRef.current;
 
       // Particles
-      setParticles(prev => {
-        if (!prev.length) return prev;
-        const nx = prev
-          .map(p => ({ ...p, x: p.x + (p.vx / sw) * 100, y: p.y + (p.vy / sh) * 100, vy: p.vy + 0.28, rotation: p.rotation + p.spin }))
-          .filter(p => p.y < 108);
-        return nx.length === prev.length ? prev : nx;
+      s.particles = s.particles
+        .map(p => ({ ...p, x: p.x + (p.vx / sw) * 100, y: p.y + (p.vy / sh) * 100, vy: p.vy + 0.28, rotation: p.rotation + p.spin }))
+        .filter(p => p.y < 108);
+
+      // Draw particles on canvas
+      const canvas = particleCanvasRef.current;
+      if (canvas) {
+        const ctx = canvas.getContext('2d');
+        if (canvas.width !== sw || canvas.height !== sh) {
+          canvas.width = sw;
+          canvas.height = sh;
+        }
+        ctx.clearRect(0, 0, sw, sh);
+        s.particles.forEach(p => {
+          ctx.save();
+          const px = (p.x / 100) * sw;
+          const py = (p.y / 100) * sh;
+          ctx.translate(px, py);
+          ctx.rotate((p.rotation * Math.PI) / 180);
+          ctx.fillStyle = p.color;
+          ctx.shadowBlur = 10;
+          ctx.shadowColor = p.color;
+          ctx.beginPath();
+          ctx.arc(0, 0, p.size / 3, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        });
+      }
+
+      // Actualizar burbujas en el DOM directamente
+      s.bubbles.forEach(b => {
+        const el = document.getElementById(`english-bubble-${b.id}`);
+        if (el) {
+          el.style.left = `${b.x}%`;
+          el.style.top = `${b.y}%`;
+          const innerEl = el.querySelector('.bubble-inner');
+          if (innerEl) {
+            if (b.isGrabbed) {
+              innerEl.className = 'bubble-inner px-5 py-3 rounded-2xl border-2 font-display text-lg font-black italic shadow-2xl transition-all bg-white/90 border-white text-purple-700 shadow-[0_0_40px_white]';
+            } else {
+              innerEl.className = 'bubble-inner px-5 py-3 rounded-2xl border-2 font-display text-lg font-black italic shadow-2xl transition-all bg-gradient-to-br from-cyan-600/30 to-blue-600/20 border-cyan-400/40 text-white';
+            }
+          }
+        }
       });
 
       if (s.isCorrect) return;
@@ -391,7 +487,10 @@ const EnglishModule = memo(({ addPoints }) => {
       });
 
       s.bubbles = next;
-      setBubbles([...next]);
+      if (next.length !== lastBubblesLengthRef.current) {
+        setBubbles([...next]);
+        lastBubblesLengthRef.current = next.length;
+      }
     };
 
     frameRef.current = requestAnimationFrame(loop);
@@ -421,9 +520,11 @@ const EnglishModule = memo(({ addPoints }) => {
       <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 glass-dark px-5 py-2.5 rounded-2xl border border-white/10 shadow-xl">
         <span className="text-[9px] font-black uppercase tracking-[0.3em] text-cyan-400">🇺🇸 English</span>
         <div className="w-px h-4 bg-white/20" />
-        <span className={`text-[9px] font-black uppercase tracking-widest ${currentLevel.color}`}>{currentLevel.label}</span>
+        <span className={`text-[9px] font-black uppercase tracking-widest ${currentLevel.color}`}>{currentLabel}</span>
         <div className="w-px h-4 bg-white/20" />
-        <span className="text-[9px] font-black text-white/40">{totalCorrect} correctas</span>
+        <span className="text-[9px] font-black text-white/40">
+          {lang === 'es' ? `${totalCorrect} correctas` : `${totalCorrect} correct`}
+        </span>
       </div>
 
       {/* Level buttons */}
@@ -433,7 +534,7 @@ const EnglishModule = memo(({ addPoints }) => {
           dwellMs={1000} hitMargin={4} variant={levelIdx < LEVELS.length - 1 ? 'purple' : 'default'}
           className="px-4 py-3 text-[10px]"
         >
-          <ChevronUp size={14} /> Subir nivel
+          <ChevronUp size={14} /> {lang === 'es' ? 'Subir nivel' : 'Level up'}
         </HandButton>
         {levelIdx > 0 && (
           <HandButton
@@ -441,7 +542,7 @@ const EnglishModule = memo(({ addPoints }) => {
             dwellMs={1000} hitMargin={4} variant="default"
             className="mt-4 px-4 py-3 text-[10px] !bg-white/5 !border-white/10 w-full"
           >
-            ↓ Bajar nivel
+            {lang === 'es' ? '↓ Bajar nivel' : '↓ Level down'}
           </HandButton>
         )}
       </div>
@@ -450,10 +551,10 @@ const EnglishModule = memo(({ addPoints }) => {
       <div className="absolute top-[26%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-3xl px-8 flex flex-col items-center gap-5 z-10">
         <motion.div key={`${levelIdx}-${sentenceIdx}`}
           initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-          className="glass-dark px-8 py-6 rounded-[36px] border border-white/10 shadow-2xl w-full">
+          className="glass-dark px-8 py-6 rounded-[36px] border border-white/10 shadow-xl w-full">
 
           <p className="text-[8.5px] font-black uppercase tracking-[0.4em] text-white/30 mb-3 text-center">
-            {currentLevel.description}
+            {currentDescription}
           </p>
 
           {/* Sentence with N blank slots */}
@@ -489,14 +590,14 @@ const EnglishModule = memo(({ addPoints }) => {
             {currentSentence.translation}
           </p>
           <p className="text-[8px] text-amber-400/60 font-black uppercase tracking-widest text-center mt-1">
-            pista: {currentSentence.hint}
+            {lang === 'es' ? 'pista' : 'hint'}: {currentSentence.hint}
           </p>
         </motion.div>
 
         {streak > 1 && (
           <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }}
             className="flex items-center gap-2 text-amber-400 text-[10px] font-black uppercase tracking-widest bg-amber-500/10 px-4 py-1.5 rounded-full border border-amber-500/20">
-            <Star size={12} fill="currentColor" /> Racha x{streak}
+            <Star size={12} fill="currentColor" /> {lang === 'es' ? `Racha x${streak}` : `Streak x${streak}`}
           </motion.div>
         )}
       </div>
@@ -504,19 +605,17 @@ const EnglishModule = memo(({ addPoints }) => {
       {/* Falling word bubbles */}
       <div className="absolute inset-0 pointer-events-none z-20">
         {bubbles.map(b => (
-          <div key={b.id} className="absolute transform -translate-x-1/2 -translate-y-1/2"
-            style={{ left: `${b.x}%`, top: `${b.y}%` }}>
-            <motion.div
-              animate={{ scale: b.isGrabbed ? 1.15 : 1, rotate: b.isGrabbed ? [0, -4, 4, 0] : 0 }}
-              transition={b.isGrabbed ? { repeat: Infinity, duration: 0.5 } : {}}
-              className={`px-5 py-3 rounded-2xl border-2 font-display text-lg font-black italic shadow-2xl transition-all ${
-                b.isGrabbed
-                  ? 'bg-white/90 border-white text-purple-700 shadow-[0_0_40px_white]'
-                  : 'bg-gradient-to-br from-cyan-600/30 to-blue-600/20 border-cyan-400/40 text-white'
-              }`}
+          <div
+            id={`english-bubble-${b.id}`}
+            key={b.id}
+            className="absolute transform -translate-x-1/2 -translate-y-1/2"
+            style={{ left: `${b.x}%`, top: `${b.y}%` }}
+          >
+            <div
+              className={`bubble-inner px-5 py-3 rounded-2xl border-2 font-display text-lg font-black italic shadow-2xl transition-all bg-gradient-to-br from-cyan-600/30 to-blue-600/20 border-cyan-400/40 text-white`}
             >
               {b.text}
-            </motion.div>
+            </div>
           </div>
         ))}
       </div>
@@ -541,17 +640,15 @@ const EnglishModule = memo(({ addPoints }) => {
                 {currentSentence.hint} — {currentSentence.answers.join(' · ')}
               </p>
             </div>
-            <p className="text-white/40 font-black uppercase tracking-[0.3em] text-[9px]">Next sentence coming up…</p>
+            <p className="text-white/40 font-black uppercase tracking-[0.3em] text-[9px]">
+              {lang === 'es' ? 'Siguiente oración en camino…' : 'Next sentence coming up…'}
+            </p>
           </motion.div>
         )}
       </AnimatePresence>
 
       {/* Particles */}
-      {particles.map(p => (
-        <div key={p.id} className="absolute pointer-events-none font-black"
-          style={{ left: `${p.x}%`, top: `${p.y}%`, fontSize: `${p.size}px`, color: p.color,
-            transform: `translate(-50%,-50%) rotate(${p.rotation}deg)`, textShadow: `0 0 8px ${p.color}` }}>★</div>
-      ))}
+      <canvas ref={particleCanvasRef} className="absolute inset-0 pointer-events-none z-30" />
 
       {/* Feedback toast */}
       <AnimatePresence>
@@ -573,14 +670,12 @@ const EnglishModule = memo(({ addPoints }) => {
         )}
       </AnimatePresence>
 
-      {/* Instruction */}
-      {!isCorrect && (
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 glass px-7 py-3 rounded-2xl border border-white/10 animate-pulse">
-          <p className="text-[9px] font-black uppercase tracking-[0.2em] text-white/50 italic text-center">
-            🤏 Pinch a word · bring it close to the blank slot · it will snap in
-          </p>
-        </div>
-      )}
+      <GameInstruction
+        messageEs="Pellizca una palabra, llévala cerca del espacio en blanco y se ajustará"
+        messageEn="Pinch a word, bring it close to the blank slot and it will snap in"
+        lang={lang}
+        icon="🇺🇸"
+      />
     </div>
   );
 });

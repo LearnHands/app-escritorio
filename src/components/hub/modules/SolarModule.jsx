@@ -2,9 +2,10 @@ import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Compass, Sparkles, AlertTriangle, ArrowRight, Volume2, VolumeX, RotateCcw } from 'lucide-react';
 import HandButton from '../HandButton';
+import GameInstruction from '../GameInstruction';
 
 // Constelaciones y datos educativos
-const CONSTELLATIONS = [
+const CONSTELLATIONS_ES = [
   {
     id: 'osamayor',
     name: 'Osa Mayor',
@@ -77,7 +78,81 @@ const CONSTELLATIONS = [
   }
 ];
 
-const SolarModule = memo(({ addPoints }) => {
+const CONSTELLATIONS_EN = [
+  {
+    id: 'osamayor',
+    name: 'Ursa Major',
+    stars: [
+      { x: 20, y: 30, name: 'Merak' },
+      { x: 30, y: 32, name: 'Dubhe' },
+      { x: 38, y: 40, name: 'Megrez' },
+      { x: 45, y: 43, name: 'Alioth' },
+      { x: 48, y: 55, name: 'Mizar' },
+      { x: 62, y: 56, name: 'Alkaid' },
+      { x: 72, y: 42, name: 'Phad' },
+      { x: 60, y: 34, name: 'Merak' }
+    ],
+    fact: 'It is one of the most famous constellations in the northern sky. Its two final stars point straight to Polaris to locate North.',
+    symbol: '🐻'
+  },
+  {
+    id: 'orion',
+    name: 'Orion Constellation',
+    stars: [
+      { x: 35, y: 25, name: 'Betelgeuse' },
+      { x: 65, y: 28, name: 'Bellatrix' },
+      { x: 46, y: 48, name: 'Alnitak' },
+      { x: 50, y: 48, name: 'Alnilam' },
+      { x: 54, y: 48, name: 'Mintaka' },
+      { x: 40, y: 68, name: 'Saiph' },
+      { x: 60, y: 65, name: 'Rigel' }
+    ],
+    fact: 'Represents the great hunter of mythology. In its center lie the famous "Three Marys" or Orion\'s Belt.',
+    symbol: '🏹'
+  },
+  {
+    id: 'casiopea',
+    name: 'Cassiopeia',
+    stars: [
+      { x: 20, y: 45, name: 'Segin' },
+      { x: 35, y: 55, name: 'Ruchbah' },
+      { x: 50, y: 40, name: 'Gamma Cas' },
+      { x: 65, y: 58, name: 'Shedar' },
+      { x: 80, y: 43, name: 'Caph' }
+    ],
+    fact: 'Easily recognized in the sky by its bright "W" or "M" shape. Represents a vain queen from Greek mythology.',
+    symbol: '👑'
+  },
+  {
+    id: 'cruzdesur',
+    name: 'The Southern Cross',
+    stars: [
+      { x: 50, y: 20, name: 'Gacrux' },
+      { x: 35, y: 50, name: 'Mimosa' },
+      { x: 50, y: 78, name: 'Acrux' },
+      { x: 65, y: 50, name: 'Imai' },
+      { x: 54, y: 56, name: 'Ginan' }
+    ],
+    fact: 'It is the smallest constellation in the sky, but the most important of the southern hemisphere, serving to locate the direction of the South Pole.',
+    symbol: '⛵'
+  },
+  {
+    id: 'alineacion',
+    name: 'Planetary Alignment',
+    stars: [
+      { x: 20, y: 50, name: 'Sun' },
+      { x: 35, y: 45, name: 'Mercury' },
+      { x: 50, y: 55, name: 'Venus' },
+      { x: 65, y: 42, name: 'Earth' },
+      { x: 80, y: 52, name: 'Mars' }
+    ],
+    fact: 'Occurs when several planets align from the Sun in their orbits. A wonderful space parade!',
+    symbol: '🪐'
+  }
+];
+
+const SolarModule = memo(({ addPoints, lang = 'es' }) => {
+  const CONSTELLATIONS = lang === 'es' ? CONSTELLATIONS_ES : CONSTELLATIONS_EN;
   const canvasRef = useRef(null);
   const [level, setLevel] = useState(0);
   const [gameState, setGameState] = useState('PLAYING'); // PLAYING, WIN
@@ -510,12 +585,12 @@ const SolarModule = memo(({ addPoints }) => {
         }
       }
 
-      // Animación de advertencia
+      // Animación de advertencia (evita llamadas setState redundantes a 60 FPS)
       if (state.warningTimer > 0) {
         state.warningTimer -= 1;
-        setWarningActive(true);
+        setWarningActive(prev => { if (!prev) return true; return prev; });
       } else {
-        setWarningActive(false);
+        setWarningActive(prev => { if (prev) return false; return prev; });
       }
 
       frameRef.current = requestAnimationFrame(runLoop);
@@ -570,8 +645,12 @@ const SolarModule = memo(({ addPoints }) => {
           >
             <AlertTriangle className="text-red-500 animate-bounce" size={32} />
             <div className="flex flex-col">
-              <span className="text-sm font-black uppercase tracking-wider">¡Línea rota!</span>
-              <span className="text-[10px] uppercase font-bold text-red-400/80">Chocaste con un asteroide. Comienza de nuevo.</span>
+              <span className="text-sm font-black uppercase tracking-wider">
+                {lang === 'es' ? '¡Línea rota!' : 'Line broken!'}
+              </span>
+              <span className="text-[10px] uppercase font-bold text-red-400/80">
+                {lang === 'es' ? 'Chocaste con un asteroide. Comienza de nuevo.' : 'You hit an asteroid. Start over.'}
+              </span>
             </div>
           </motion.div>
         )}
@@ -588,8 +667,12 @@ const SolarModule = memo(({ addPoints }) => {
           >
             <div className="flex flex-col items-center gap-1.5 text-center">
               <div className="text-4xl animate-pulse">{currentConstellation.symbol}</div>
-              <h3 className="text-xl font-display font-black italic uppercase text-gradient leading-tight">¡Completado!</h3>
-              <p className="text-[8px] font-black uppercase tracking-[0.2em] text-cyan-400">Constelación revelada</p>
+              <h3 className="text-xl font-display font-black italic uppercase text-gradient leading-tight">
+                {lang === 'es' ? '¡Completado!' : 'Completed!'}
+              </h3>
+              <p className="text-[8px] font-black uppercase tracking-[0.2em] text-cyan-400">
+                {lang === 'es' ? 'Constelación revelada' : 'Constellation revealed'}
+              </p>
             </div>
 
             <div className="bg-white/5 border border-white/5 p-3.5 rounded-xl w-full">
@@ -604,7 +687,7 @@ const SolarModule = memo(({ addPoints }) => {
               variant="cyan"
               dwellMs={800}
             >
-              SIGUIENTE <ArrowRight size={13} />
+              {lang === 'es' ? 'SIGUIENTE' : 'NEXT'} <ArrowRight size={13} />
             </HandButton>
           </motion.div>
         )}
@@ -612,12 +695,12 @@ const SolarModule = memo(({ addPoints }) => {
 
       {/* Pie de instrucciones */}
       {gameState === 'PLAYING' && (
-        <div className="absolute bottom-6 flex items-center gap-6 glass px-8 py-3.5 rounded-[24px] border border-white/10 animate-pulse z-20">
-          <span className="text-2xl">👉</span>
-          <p className="text-[9px] font-black uppercase tracking-[0.2em] text-white/50 italic">
-            Toca el número 1 para iniciar, conecta los puntos en orden y esquiva los meteoros
-          </p>
-        </div>
+        <GameInstruction
+          messageEs="Toca el número 1 para iniciar, conecta los puntos en orden y esquiva los meteoros"
+          messageEn="Touch number 1 to start, connect dots in order and dodge meteors"
+          lang={lang}
+          icon="👉"
+        />
       )}
     </div>
   );

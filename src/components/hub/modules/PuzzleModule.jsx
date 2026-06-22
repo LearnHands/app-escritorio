@@ -2,6 +2,19 @@ import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { RefreshCw, CheckCircle, Star } from 'lucide-react';
 import HandButton from '../HandButton';
+import GameInstruction from '../GameInstruction';
+
+const getTranslatedLabel = (label, lang) => {
+  if (lang === 'en') {
+    if (label.includes('Sol')) return '☀️ Sun';
+    if (label.includes('Mar')) return '🌊 Sea';
+    if (label.includes('Bosque')) return '🌲 Forest';
+    if (label.includes('Montña') || label.includes('Montaña')) return '🏔️ Mountain';
+    if (label.includes('Flores')) return '🌸 Flowers';
+    if (label.includes('Espacio')) return '🚀 Space';
+  }
+  return label;
+};
 
 const FOOTER_H = 64;
 const GRID_VW   = 44;   // CSS width of the target grid as % of viewport
@@ -291,7 +304,7 @@ const initTiles = (gridSize) => {
 };
 
 // ══════════════════════════════════════════════════════════════════════════════
-const PuzzleModule = memo(({ addPoints }) => {
+const PuzzleModule = memo(({ addPoints, lang = 'es' }) => {
   const [level,       setLevel]       = useState(1);
   const [imageIdx,    setImageIdx]    = useState(0);
   const [isWon,       setIsWon]       = useState(false);
@@ -484,16 +497,18 @@ const PuzzleModule = memo(({ addPoints }) => {
 
       {/* Header */}
       <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 glass-dark px-5 py-2 rounded-2xl border border-white/10">
-        <span className="text-[9px] font-black uppercase tracking-[0.3em] text-purple-400">Nivel {level}</span>
+        <span className="text-[9px] font-black uppercase tracking-[0.3em] text-purple-400">
+          {lang === 'es' ? 'Nivel' : 'Level'} {level}
+        </span>
         <div className="w-px h-4 bg-white/20" />
-        <span className="text-[9px] font-black uppercase tracking-[0.2em] text-white/50">{image?.label ?? '…'}</span>
+        <span className="text-[9px] font-black uppercase tracking-[0.2em] text-white/50">{image ? getTranslatedLabel(image.label, lang) : '…'}</span>
         <div className="w-px h-4 bg-white/20" />
         <span className="text-[9px] font-black uppercase tracking-[0.2em] text-white/30">{gridSize}×{gridSize}</span>
         <div className="w-px h-4 bg-white/20" />
         <span className={`text-[9px] font-black uppercase tracking-[0.2em] ${
           level >= 3 ? 'text-red-400' : level >= 2 ? 'text-amber-400' : 'text-green-400'
         }`}>
-          👁 {hintSlotIds.size}/{tileCount} pistas
+          👁 {hintSlotIds.size}/{tileCount} {lang === 'es' ? 'pistas' : 'hints'}
         </span>
         <div className="w-px h-4 bg-white/20" />
         {/* Piece progress counter */}
@@ -630,16 +645,16 @@ const PuzzleModule = memo(({ addPoints }) => {
               className="mb-6 text-[100px]"
             >🏆</motion.div>
             <h2 className="text-5xl font-display font-black text-gradient italic uppercase tracking-tighter mb-3">
-              ¡Lo lograste!
+              {lang === 'es' ? '¡Lo lograste!' : 'You did it!'}
             </h2>
             <p className="text-white/50 font-black uppercase tracking-[0.3em] text-[10px] mb-8">
-              {level < 2 ? 'Siguiente nivel: cuadrícula 3×3'
-               : level < 3 ? 'Siguiente nivel: cuadrícula 4×4'
-               : '¡Maestro del puzzle!'}
+              {level < 2 ? (lang === 'es' ? 'Siguiente nivel: cuadrícula 3×3' : 'Next level: 3×3 grid')
+               : level < 3 ? (lang === 'es' ? 'Siguiente nivel: cuadrícula 4×4' : 'Next level: 4×4 grid')
+               : (lang === 'es' ? '¡Maestro del puzzle!' : 'Puzzle Master!')}
             </p>
             <HandButton onClick={handleNextPuzzle} className="px-12 py-5 text-sm" variant="purple" dwellMs={800}>
               <Star size={16} fill="white" />
-              {level < 3 ? 'Subir nivel' : 'Otro puzzle'}
+              {level < 3 ? (lang === 'es' ? 'Subir nivel' : 'Level Up') : (lang === 'es' ? 'Otro puzzle' : 'Another puzzle')}
             </HandButton>
           </motion.div>
         )}
@@ -657,11 +672,12 @@ const PuzzleModule = memo(({ addPoints }) => {
 
       {/* Instruction */}
       {!isWon && (
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 glass px-7 py-3 rounded-2xl border border-white/10 animate-pulse">
-          <p className="text-[9px] font-black uppercase tracking-[0.2em] text-white/50 italic text-center">
-            🤏 Pellizca una pieza · suéltala sobre su sombra para colocarla
-          </p>
-        </div>
+        <GameInstruction
+          messageEs="Pellizca una pieza y suéltala sobre su sombra para colocarla"
+          messageEn="Pinch a piece and drop it over its shadow to place it"
+          lang={lang}
+          icon="🧩"
+        />
       )}
     </div>
   );

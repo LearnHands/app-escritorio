@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Volume2, VolumeX, Sparkles } from 'lucide-react';
+import GameInstruction from '../GameInstruction';
 
 // Progresión de metas: índice crece con streak
 const TARGET_SEQUENCE = [5, 8, 10, 12, 15, 18, 20, 25, 30];
 const FOOTER_H = 64; // altura de la barra inferior en px
 
-const MathAbacusModule = memo(({ addPoints }) => {
+const MathAbacusModule = memo(({ addPoints, lang = 'es' }) => {
   const [targetSum, setTargetSum]     = useState(TARGET_SEQUENCE[0]);
   const [currentSum, setCurrentSum]   = useState(0);
   const [selectedNums, setSelectedNums] = useState([]);
@@ -14,6 +15,12 @@ const MathAbacusModule = memo(({ addPoints }) => {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [bubbles, setBubbles]         = useState([]);
   const [feedbackMsg, setFeedbackMsg] = useState(null);
+
+  const lastTargetSum = useRef(-1);
+  const lastStreak = useRef(-1);
+  const lastCurrentSum = useRef(-1);
+  const lastSelectedNumsStr = useRef('');
+  const lastBubblesLengthRef = useRef(-1);
 
   const audioCtxRef   = useRef(null);
   const frameRef      = useRef(null);
@@ -247,12 +254,53 @@ const MathAbacusModule = memo(({ addPoints }) => {
         }
       }
 
+      // Actualizar burbujas en el DOM directamente
+      s.bubbles.forEach(b => {
+        const el = document.getElementById(`abacus-bubble-${b.id}`);
+        if (el) {
+          el.style.left = `${b.x}%`;
+          el.style.top = `${b.y}%`;
+          el.style.transform = `translate(-50%, -50%) ${b.errorTimer > 0 ? `translateX(${Math.sin(b.errorTimer * 1.8) * 5}px)` : ''}`;
+          
+          const innerEl = el.querySelector('.bubble-inner');
+          if (innerEl) {
+            if (b.isSelected) {
+              innerEl.className = 'bubble-inner w-20 h-20 rounded-full border-2 flex items-center justify-center font-display text-3xl font-black italic shadow-xl transition-all duration-150 bg-purple-500/80 border-white text-white shadow-[0_0_30px_#a78bfa]';
+            } else if (b.errorTimer > 0) {
+              innerEl.className = 'bubble-inner w-20 h-20 rounded-full border-2 flex items-center justify-center font-display text-3xl font-black italic shadow-xl transition-all duration-150 bg-red-500/30 border-red-500 text-red-400';
+            } else {
+              innerEl.className = 'bubble-inner w-20 h-20 rounded-full border-2 flex items-center justify-center font-display text-3xl font-black italic shadow-xl transition-all duration-150 bg-cyan-500/15 border-cyan-500/40 text-white backdrop-blur-md';
+            }
+          }
+        }
+      });
+
       // ── 4. Sincronizar React (batched) ───────────────────────────────────
-      setBubbles([...s.bubbles]);
-      setTargetSum(s.targetSum);
-      setStreak(s.streak);
-      setCurrentSum(s.selectedItems.reduce((a, b) => a + b.value, 0));
-      setSelectedNums(s.selectedItems.map(i => i.value));
+      if (s.bubbles.length !== lastBubblesLengthRef.current) {
+        setBubbles([...s.bubbles]);
+        lastBubblesLengthRef.current = s.bubbles.length;
+      }
+      if (s.targetSum !== lastTargetSum.current) {
+        setTargetSum(s.targetSum);
+        lastTargetSum.current = s.targetSum;
+      }
+      if (s.streak !== lastStreak.current) {
+        setStreak(s.streak);
+        lastStreak.current = s.streak;
+      }
+      
+      const currentSumVal = s.selectedItems.reduce((a, b) => a + b.value, 0);
+      if (currentSumVal !== lastCurrentSum.current) {
+        setCurrentSum(currentSumVal);
+        lastCurrentSum.current = currentSumVal;
+      }
+
+      const selectedNumsArr = s.selectedItems.map(i => i.value);
+      const selectedNumsStr = selectedNumsArr.join(',');
+      if (selectedNumsStr !== lastSelectedNumsStr.current) {
+        setSelectedNums(selectedNumsArr);
+        lastSelectedNumsStr.current = selectedNumsStr;
+      }
 
       frameRef.current = requestAnimationFrame(loop);
     };
@@ -277,7 +325,7 @@ const MathAbacusModule = memo(({ addPoints }) => {
         <span className="text-[9px] font-black text-amber-400 uppercase tracking-[0.3em]">Objetivo</span>
         <span className="text-2xl font-display font-black text-amber-400 italic">{targetSum}</span>
         <div className="w-px h-5 bg-white/20" />
-        <span className="text-[9px] font-black text-white/40 uppercase tracking-[0.3em]">Suma</span>
+        <span className="text-[9px] font-black text-white/40 uppercase tracking-[0.3em]">{lang === 'es' ? 'Suma' : 'Sum'}</span>
         <span className="text-2xl font-display font-black text-white">{currentSum}</span>
         {selectedNums.length > 0 && (
           <>
@@ -299,7 +347,9 @@ const MathAbacusModule = memo(({ addPoints }) => {
       {/* Burbujas */}
       <div className="absolute inset-0 pointer-events-none z-20">
         {bubbles.map(b => (
-          <div key={b.id}
+          <div
+            id={`abacus-bubble-${b.id}`}
+            key={b.id}
             className="absolute -translate-x-1/2 -translate-y-1/2"
             style={{
               left: `${b.x}%`,
@@ -307,13 +357,7 @@ const MathAbacusModule = memo(({ addPoints }) => {
               transform: `translate(-50%, -50%) ${b.errorTimer > 0 ? `translateX(${Math.sin(b.errorTimer * 1.8) * 5}px)` : ''}`,
             }}
           >
-            <div className={`w-20 h-20 rounded-full border-2 flex items-center justify-center font-display text-3xl font-black italic shadow-xl transition-all duration-150 ${
-              b.isSelected
-                ? 'bg-purple-500/80 border-white text-white shadow-[0_0_30px_#a78bfa]'
-                : b.errorTimer > 0
-                  ? 'bg-red-500/30 border-red-500 text-red-400'
-                  : 'bg-cyan-500/15 border-cyan-500/40 text-white backdrop-blur-md'
-            }`}>
+            <div className={`bubble-inner w-20 h-20 rounded-full border-2 flex items-center justify-center font-display text-3xl font-black italic shadow-xl transition-all duration-150 bg-cyan-500/15 border-cyan-500/40 text-white backdrop-blur-md`}>
               {b.value}
             </div>
           </div>
@@ -343,11 +387,12 @@ const MathAbacusModule = memo(({ addPoints }) => {
       </AnimatePresence>
 
       {/* Instrucción */}
-      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 glass px-7 py-3 rounded-2xl border border-white/10 animate-pulse">
-        <p className="text-[9px] font-black uppercase tracking-[0.2em] text-white/50 italic text-center">
-          Pinza sobre los números para seleccionarlos — suma exactamente {targetSum}
-        </p>
-      </div>
+      <GameInstruction
+        lang={lang}
+        messageEs={`Pinza sobre los números para seleccionarlos — suma exactamente ${targetSum}`}
+        messageEn={`Pinch the numbers to select them — sum exactly ${targetSum}`}
+        icon="🔢"
+      />
     </div>
   );
 });

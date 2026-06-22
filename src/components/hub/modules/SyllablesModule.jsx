@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Star, Trophy, Volume2, VolumeX, Languages } from 'lucide-react';
 import HandButton from '../HandButton';
+import GameInstruction from '../GameInstruction';
+import { addLocalLog } from '../../../services/sync';
 
 const WORDS_ES = [
   { word: 'GATO',    syllables: ['GA',  'TO']        },
@@ -44,8 +46,7 @@ const DISTRACTORS_EN = [
   'MAN', 'PAN', 'COT', 'HOT', 'FIT', 'PET', 'SET', 'CUT',
 ];
 
-const SyllablesModule = memo(({ addPoints }) => {
-  const [lang, setLang] = useState('es'); // 'es' | 'en'
+const SyllablesModule = memo(({ addPoints, lang = 'es' }) => {
 
   const WORDS       = lang === 'es' ? WORDS_ES : WORDS_EN;
   const DISTRACTORS = lang === 'es' ? DISTRACTORS_ES : DISTRACTORS_EN;
@@ -78,27 +79,29 @@ const SyllablesModule = memo(({ addPoints }) => {
 
   // Reset to first word whenever language changes
   useEffect(() => {
+    const s = stateRef.current;
     wordCursorRef.current = 1;
     setWordIndex(0);
     setSlots(WORDS[0].syllables.map(() => null));
     setBubbles([]);
     setIsWordWon(false);
-    setParticles([]);
-    const s = stateRef.current;
+    s.particles = [];
     s.wordIdx = 0; s.slots = WORDS[0].syllables.map(() => null);
     s.bubbles = []; s.dragging = {}; s.isWordWon = false;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lang]);
 
-  const currentWord = WORDS[Math.min(wordIndex, WORDS.length - 1)];
+  const currentWord = WORDS[Math.min(wordIndex, WORDS.length - 1)] || WORDS[0];
 
   const [slots, setSlots]               = useState(() => Array(currentWord.syllables.length).fill(null));
   const [bubbles, setBubbles]           = useState([]);
   const [streak, setStreak]             = useState(0);
   const [soundEnabled, setSoundEnabled] = useState(true);
-  const [particles, setParticles]       = useState([]);
   const [isWordWon, setIsWordWon]       = useState(false);
   const [feedbackMsg, setFeedbackMsg]   = useState(null); // { text, type: 'ok'|'hint'|'error' }
+
+  const particleCanvasRef = useRef(null);
+  const lastBubblesLengthRef = useRef(-1);
 
   const audioCtxRef     = useRef(null);
   const frameRef        = useRef(null);
@@ -112,6 +115,7 @@ const SyllablesModule = memo(({ addPoints }) => {
     slots:     Array(currentWord.syllables.length).fill(null),
     wordIdx:   wordIndex,
     isWordWon: false,
+    particles: []
   });
 
   const addPointsRef    = useRef(addPoints);
@@ -192,8 +196,9 @@ const SyllablesModule = memo(({ addPoints }) => {
 
   // ── Win particles ─────────────────────────────────────────────────────────
   const spawnWinParticles = useCallback(() => {
+    const s = stateRef.current;
     const colors = ['#A78BFA', '#06B6D4', '#EC4899', '#10B981', '#F59E0B'];
-    setParticles(Array.from({ length: 40 }, () => ({
+    s.particles = Array.from({ length: 40 }, () => ({
       id:       Math.random(),
       x:        50 + (Math.random() - 0.5) * 40,
       y:        80 + (Math.random() - 0.5) * 15,
@@ -203,7 +208,7 @@ const SyllablesModule = memo(({ addPoints }) => {
       size:     10 + Math.random() * 20,
       rotation: Math.random() * 360,
       spin:     (Math.random() - 0.5) * 15,
-    })));
+    }));
   }, []);
 
   // ── Load next word (sequential, no-repeat) ────────────────────────────────
@@ -221,7 +226,7 @@ const SyllablesModule = memo(({ addPoints }) => {
     setSlots(s.slots);
     setBubbles([]);
     setIsWordWon(false);
-    setParticles([]);
+    s.particles = [];
   }, [pickNextIndex]);
 
   // ── Progressive bubble speed ───────────────────────────────────────────────
@@ -268,17 +273,36 @@ const SyllablesModule = memo(({ addPoints }) => {
     return () => clearInterval(spawnTimerRef.current);
   }, [spawnBubble]);
 
+  // Monitor unhandled runtime errors
+  useEffect(() => {
+    const handleError = (e) => {
+      try {
+        const msg = e.message || (e.error && e.error.message) || String(e);
+        const stack = (e.error && e.error.stack) || '';
+        addLocalLog('MODULE_CRASH_RAW', `Error de runtime en Sílabas: ${msg}\nStack: ${stack}`);
+      } catch (err) {
+        console.error('Error logging syllables runtime error:', err);
+      }
+    };
+    window.addEventListener('error', handleError);
+    return () => window.removeEventListener('error', handleError);
+  }, []);
+
   // ── Main physics loop ─────────────────────────────────────────────────────
   useEffect(() => {
     const updatePhysics = () => {
-      const screenW = window.innerWidth;
-      const screenH = window.innerHeight;
-      const s       = stateRef.current;
+      try {
+        const screenW = window.innerWidth;
+        const screenH = window.innerHeight;
+        const s       = stateRef.current;
+        const word = wordBankRef.current.words[s.wordIdx];
+        if (!word || !s.slots) {
+          frameRef.current = requestAnimationFrame(updatePhysics);
+          return;
+        }
 
-      // Particle animation (stays in React state for CSS rendering)
-      setParticles(prev => {
-        if (prev.length === 0) return prev;
-        const next = prev
+        // Particle animation
+        s.particles = s.particles
           .map(p => ({
             ...p,
             x:        p.x + (p.vx / screenW) * 100,
@@ -287,168 +311,194 @@ const SyllablesModule = memo(({ addPoints }) => {
             rotation: p.rotation + p.spin,
           }))
           .filter(p => p.y < 105 && p.x > -5 && p.x < 105);
-        return next.length === prev.length ? prev : next;
-      });
 
-      if (s.isWordWon) {
-        frameRef.current = requestAnimationFrame(updatePhysics);
-        return;
-      }
-
-      const handData    = window.latestHandData || { cursors: [], gestures: [] };
-      const cursors     = handData.cursors  || [];
-      const gestures    = handData.gestures || [];
-
-      const mappedCursors = cursors.map(c => ({
-        x: (c.x / screenW) * 100,
-        y: (c.y / screenH) * 100,
-        isVisible: c.isVisible,
-      }));
-
-      // 1. Move bubbles; drag grabbed ones with cursor
-      const word        = wordBankRef.current.words[s.wordIdx];
-      const nextBubbles = s.bubbles
-        .map(b => {
-          const bCopy = { ...b };
-          if (bCopy.isGrabbed && bCopy.grabbedBy !== null) {
-            const cursor = mappedCursors[bCopy.grabbedBy];
-            if (cursor && cursor.isVisible) {
-              bCopy.x     = cursor.x;
-              bCopy.y     = cursor.y;
-              bCopy.pulse = 1.15;
-
-              // Snap while dragging
-              for (let i = 0; i < word.syllables.length; i++) {
-                if (s.slots[i] !== null) continue;
-                const slotEl = document.getElementById(`syllable-slot-${i}`);
-                if (!slotEl) continue;
-                const rect     = slotEl.getBoundingClientRect();
-                const slotPx   = rect.left + rect.width  / 2;
-                const slotPy   = rect.top  + rect.height / 2;
-                const bubblePx = (bCopy.x / 100) * screenW;
-                const bubblePy = (bCopy.y / 100) * screenH;
-                if (Math.hypot(bubblePx - slotPx, bubblePy - slotPy) < 80 && word.syllables[i] === bCopy.text) {
-                  s.slots[i] = bCopy.text;
-                  setSlots([...s.slots]);
-                  playSound('snap');
-                  addPointsRef.current(50);
-                  delete s.dragging[bCopy.grabbedBy];
-                  bCopy.shouldRemove = true;
-                  break;
-                }
-              }
-            } else {
-              bCopy.isGrabbed = false;
-              bCopy.grabbedBy = null;
-              bCopy.pulse     = 1.0;
-              delete s.dragging[bCopy.grabbedBy];
-            }
-          } else {
-            bCopy.y    += bCopy.speed;
-            bCopy.pulse = 1.0;
+        // Draw particles on canvas
+        const canvas = particleCanvasRef.current;
+        if (canvas) {
+          const ctx = canvas.getContext('2d');
+          if (canvas.width !== screenW || canvas.height !== screenH) {
+            canvas.width = screenW;
+            canvas.height = screenH;
           }
-          return bCopy;
-        })
-        .filter(b => b.y < 108 && !b.shouldRemove);
+          ctx.clearRect(0, 0, screenW, screenH);
+          s.particles.forEach(p => {
+            ctx.save();
+            const px = (p.x / 100) * screenW;
+            const py = (p.y / 100) * screenH;
+            ctx.translate(px, py);
+            ctx.rotate((p.rotation * Math.PI) / 180);
+            ctx.fillStyle = p.color;
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = p.color;
+            ctx.beginPath();
+            ctx.arc(0, 0, p.size / 3.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+          });
+        }
 
-      // 2. Grab / release gestures
-      mappedCursors.forEach((cursor, handIdx) => {
-        if (!cursor.isVisible) return;
-        const isPinching      = gestures[handIdx]?.isPinching;
-        const grabbedBubbleId = s.dragging[handIdx];
+        if (s.isWordWon) {
+          frameRef.current = requestAnimationFrame(updatePhysics);
+          return;
+        }
 
-        if (isPinching) {
-          if (grabbedBubbleId === undefined) {
-            let closest = null, minDist = 9;
-            nextBubbles.forEach(b => {
-              if (b.isGrabbed) return;
-              const d = Math.hypot(b.x - cursor.x, b.y - cursor.y);
-              if (d < minDist) { minDist = d; closest = b; }
-            });
-            if (closest) {
-              closest.isGrabbed = true;
-              closest.grabbedBy = handIdx;
-              s.dragging[handIdx] = closest.id;
-            }
-          }
-        } else {
-          if (grabbedBubbleId !== undefined) {
-            const bIdx = nextBubbles.findIndex(b => b.id === grabbedBubbleId);
-            if (bIdx !== -1) {
-              const bubble = nextBubbles[bIdx];
-              let snapped  = false;
+        const handData    = window.latestHandData || { cursors: [], gestures: [] };
+        const cursors     = handData.cursors  || [];
+        const gestures    = handData.gestures || [];
 
-              for (let i = 0; i < word.syllables.length; i++) {
-                if (s.slots[i] !== null) continue;
-                const slotEl = document.getElementById(`syllable-slot-${i}`);
-                if (!slotEl) continue;
-                const rect     = slotEl.getBoundingClientRect();
-                const slotPx   = rect.left + rect.width  / 2;
-                const slotPy   = rect.top  + rect.height / 2;
-                const bubblePx = (bubble.x / 100) * screenW;
-                const bubblePy = (bubble.y / 100) * screenH;
-                if (Math.hypot(bubblePx - slotPx, bubblePy - slotPy) < 80) {
-                  if (word.syllables[i] === bubble.text) {
-                    s.slots[i] = bubble.text;
+        const mappedCursors = cursors.map(c => ({
+          x: (c.x / screenW) * 100,
+          y: (c.y / screenH) * 100,
+          isVisible: c.isVisible,
+        }));
+
+        // 1. Move bubbles; drag grabbed ones with cursor
+        const nextBubbles = s.bubbles
+          .map(b => {
+            const bCopy = { ...b };
+            if (bCopy.isGrabbed && bCopy.grabbedBy !== null) {
+              const cursor = mappedCursors[bCopy.grabbedBy];
+              if (cursor && cursor.isVisible) {
+                bCopy.x     = cursor.x;
+                bCopy.y     = cursor.y;
+                bCopy.pulse = 1.15;
+
+                // Snap while dragging
+                for (let i = 0; i < word.syllables.length; i++) {
+                  if (s.slots[i] !== null) continue;
+                  const slotEl = document.getElementById(`syllable-slot-${i}`);
+                  if (!slotEl) continue;
+                  const rect     = slotEl.getBoundingClientRect();
+                  const slotPx   = rect.left + rect.width  / 2;
+                  const slotPy   = rect.top  + rect.height / 2;
+                  const bubblePx = (bCopy.x / 100) * screenW;
+                  const bubblePy = (bCopy.y / 100) * screenH;
+                  if (Math.hypot(bubblePx - slotPx, bubblePy - slotPy) < 80 && word.syllables[i] === bCopy.text) {
+                    s.slots[i] = bCopy.text;
                     setSlots([...s.slots]);
                     playSound('snap');
                     addPointsRef.current(50);
-                    nextBubbles.splice(bIdx, 1);
-                    snapped = true;
-                  } else {
-                    playSound('error');
-                    // Hint: show which syllable belongs in this slot
-                    const expected = word.syllables[i];
-                    const langKey = wordBankRef.current.words === WORDS_EN ? 'en' : 'es';
-                    showFeedbackRef.current(
-                      langKey === 'es'
-                        ? `"${bubble.text}" no va en esa posición — busca "${expected}"`
-                        : `"${bubble.text}" doesn't fit here — look for "${expected}"`,
-                      'hint'
-                    );
+                    delete s.dragging[bCopy.grabbedBy];
+                    bCopy.shouldRemove = true;
+                    break;
                   }
-                  break;
                 }
+              } else {
+                bCopy.isGrabbed = false;
+                bCopy.grabbedBy = null;
+                bCopy.pulse     = 1.0;
+                delete s.dragging[bCopy.grabbedBy];
               }
-              if (!snapped && nextBubbles[bIdx]) {
-                nextBubbles[bIdx].isGrabbed = false;
-                nextBubbles[bIdx].grabbedBy = null;
+            } else {
+              bCopy.y    += bCopy.speed;
+              bCopy.pulse = 1.0;
+            }
+            return bCopy;
+          })
+          .filter(b => b.y < 108 && !b.shouldRemove);
+
+        // 2. Grab / release gestures
+        mappedCursors.forEach((cursor, handIdx) => {
+          if (!cursor.isVisible) return;
+          const isPinching      = gestures[handIdx]?.isPinching;
+          const grabbedBubbleId = s.dragging[handIdx];
+
+          if (isPinching) {
+            if (grabbedBubbleId === undefined) {
+              let closest = null, minDist = 9;
+              nextBubbles.forEach(b => {
+                if (b.isGrabbed) return;
+                const d = Math.hypot(b.x - cursor.x, b.y - cursor.y);
+                if (d < minDist) { minDist = d; closest = b; }
+              });
+              if (closest) {
+                closest.isGrabbed = true;
+                closest.grabbedBy = handIdx;
+                s.dragging[handIdx] = closest.id;
               }
             }
-            delete s.dragging[handIdx];
+          } else {
+            if (grabbedBubbleId !== undefined) {
+              const bIdx = nextBubbles.findIndex(b => b.id === grabbedBubbleId);
+              if (bIdx !== -1) {
+                const bubble = nextBubbles[bIdx];
+                let snapped  = false;
+
+                for (let i = 0; i < word.syllables.length; i++) {
+                  if (s.slots[i] !== null) continue;
+                  const slotEl = document.getElementById(`syllable-slot-${i}`);
+                  if (!slotEl) continue;
+                  const rect     = slotEl.getBoundingClientRect();
+                  const slotPx   = rect.left + rect.width  / 2;
+                  const slotPy   = rect.top  + rect.height / 2;
+                  const bubblePx = (bubble.x / 100) * screenW;
+                  const bubblePy = (bubble.y / 100) * screenH;
+                  if (Math.hypot(bubblePx - slotPx, bubblePy - slotPy) < 80) {
+                    if (word.syllables[i] === bubble.text) {
+                      s.slots[i] = bubble.text;
+                      setSlots([...s.slots]);
+                      playSound('snap');
+                      addPointsRef.current(50);
+                      nextBubbles.splice(bIdx, 1);
+                      snapped = true;
+                    } else {
+                      playSound('error');
+                      // Hint: show which syllable belongs in this slot
+                      const expected = word.syllables[i];
+                      const langKey = wordBankRef.current.words === WORDS_EN ? 'en' : 'es';
+                      showFeedbackRef.current(
+                        langKey === 'es'
+                          ? `"${bubble.text}" no va en esa posición — busca "${expected}"`
+                          : `"${bubble.text}" doesn't fit here — look for "${expected}"`,
+                        'hint'
+                      );
+                    }
+                    break;
+                  }
+                }
+                if (!snapped && nextBubbles[bIdx]) {
+                  nextBubbles[bIdx].isGrabbed = false;
+                  nextBubbles[bIdx].grabbedBy = null;
+                }
+              }
+              delete s.dragging[handIdx];
+            }
           }
+        });
+
+        s.bubbles = nextBubbles;
+        setBubbles([...nextBubbles]);
+
+        // 3. Check word completion
+        if (!s.isWordWon && s.slots.length > 0 && s.slots.every(v => v !== null)) {
+          s.isWordWon = true;
+          setIsWordWon(true);
+          playSound('win');
+          spawnWinParticles();
+          wordsCompletedRef.current += 1;
+          addPointsRef.current(150 + wordsCompletedRef.current * 20); // bonus grows with progress
+          setStreak(prev => prev + 1);
+
+          // Pronounce the completed word after win sound finishes
+          const wonWord = wordBankRef.current.words[s.wordIdx]?.word ?? '';
+          if (wonWord && soundEnabledRef.current && window.speechSynthesis && window.SpeechSynthesisUtterance) {
+            setTimeout(() => {
+              try {
+                window.speechSynthesis.cancel();
+                const u = new SpeechSynthesisUtterance(wonWord.toLowerCase());
+                u.lang  = langRef.current === 'en' ? 'en-US' : 'es-ES';
+                u.rate  = 0.75;
+                u.pitch = 1.0;
+                window.speechSynthesis.speak(u);
+              } catch (e) { /* ignore */ }
+            }, 650); // wait for win jingle to finish
+          }
+
+          setTimeout(() => initWord(), 2500);
         }
-      });
-
-      s.bubbles = nextBubbles;
-      setBubbles([...nextBubbles]);
-
-      // 3. Check word completion
-      if (!s.isWordWon && s.slots.length > 0 && s.slots.every(v => v !== null)) {
-        s.isWordWon = true;
-        setIsWordWon(true);
-        playSound('win');
-        spawnWinParticles();
-        wordsCompletedRef.current += 1;
-        addPointsRef.current(150 + wordsCompletedRef.current * 20); // bonus grows with progress
-        setStreak(prev => prev + 1);
-
-        // Pronounce the completed word after win sound finishes
-        const wonWord = wordBankRef.current.words[s.wordIdx]?.word ?? '';
-        if (wonWord && soundEnabledRef.current && window.speechSynthesis) {
-          setTimeout(() => {
-            try {
-              window.speechSynthesis.cancel();
-              const u = new SpeechSynthesisUtterance(wonWord.toLowerCase());
-              u.lang  = langRef.current === 'en' ? 'en-US' : 'es-ES';
-              u.rate  = 0.75;
-              u.pitch = 1.0;
-              window.speechSynthesis.speak(u);
-            } catch (e) { /* ignore */ }
-          }, 650); // wait for win jingle to finish
-        }
-
-        setTimeout(() => initWord(), 2500);
+      } catch (err) {
+        console.error('[SyllablesModule] physics loop error:', err);
+        addLocalLog('MODULE_ERROR', `Error en física de Sílabas: ${err.message}\nStack: ${err.stack}`);
       }
 
       frameRef.current = requestAnimationFrame(updatePhysics);
@@ -463,39 +513,16 @@ const SyllablesModule = memo(({ addPoints }) => {
     : (lang === 'es' ? 'Avanzado' : 'Advanced');
   const difficultyColor = currentWord.syllables.length === 2 ? 'text-emerald-400' : 'text-amber-400';
 
-  // Reset state when language changes
-  const handleLangToggle = useCallback(() => {
-    setLang(prev => {
-      const next = prev === 'es' ? 'en' : 'es';
-      usedSetRef.current    = new Set();
-      wordCursorRef.current = 0;
-      wordsCompletedRef.current = 0;
-      return next;
-    });
-  }, []);
-
   return (
     <div className="w-full h-full relative overflow-hidden select-none flex flex-col items-center">
 
-      {/* Sound + Language toggles */}
+      {/* Sound toggle */}
       <button
         onClick={() => setSoundEnabled(prev => !prev)}
         className="absolute top-4 right-12 z-50 p-4 glass rounded-2xl border border-white/10 text-white/40 hover:text-white transition-all hover:scale-105"
       >
         {soundEnabled ? <Volume2 size={20} /> : <VolumeX size={20} />}
       </button>
-      <div className="absolute top-4 right-28 z-50">
-        <HandButton
-          onClick={handleLangToggle}
-          dwellMs={1200}
-          hitMargin={8}
-          variant="default"
-          className="flex items-center gap-2 px-4 py-3 text-[9px]"
-        >
-          <Languages size={15} />
-          <span className="font-black uppercase tracking-widest">{lang === 'es' ? '🇪🇸 ES' : '🇺🇸 EN'}</span>
-        </HandButton>
-      </div>
 
       {/* Target Word Panel */}
       <div className="absolute top-[28%] left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-4 text-center z-10 w-full max-w-lg px-6">
@@ -536,24 +563,20 @@ const SyllablesModule = memo(({ addPoints }) => {
       <div className="absolute inset-0 pointer-events-none z-20">
         {bubbles.map(b => (
           <div
+            id={`syllable-bubble-${b.id}`}
             key={b.id}
             className="absolute transform -translate-x-1/2 -translate-y-1/2"
             style={{ left: `${b.x}%`, top: `${b.y}%`, scale: b.pulse }}
           >
-            <motion.div
-              animate={{
-                scale:  b.isGrabbed ? 1.15 : 1,
-                rotate: b.isGrabbed ? [0, -5, 5, 0] : 0,
-              }}
-              transition={b.isGrabbed ? { repeat: Infinity, duration: 0.5 } : {}}
-              className={`w-20 h-20 rounded-full border-2 flex items-center justify-center font-display text-2xl font-black italic shadow-2xl transition-all duration-300 ${
-                b.isGrabbed
+            <div
+              className={`bubble-inner w-20 h-20 rounded-full border-2 flex items-center justify-center font-display text-2xl font-black italic shadow-2xl transition-all duration-300 ${
+                b.isGrabbed 
                   ? 'bg-white/80 border-white text-purple-600 shadow-[0_0_40px_white] ring-4 ring-white/20'
                   : 'bg-gradient-to-tr from-purple-500/30 to-indigo-500/20 border-purple-500/40 text-white shadow-purple-500/20 backdrop-blur-md'
               }`}
             >
               {b.text}
-            </motion.div>
+            </div>
           </div>
         ))}
       </div>
@@ -565,17 +588,17 @@ const SyllablesModule = memo(({ addPoints }) => {
             <motion.div
               id={`syllable-slot-${i}`}
               animate={{
-                borderColor: slots[i] ? '#22C55E' : '#A78BFA',
-                boxShadow:   slots[i] ? '0 0 30px rgba(34, 197, 94, 0.4)' : '0 0 15px rgba(167, 139, 250, 0.1)',
-                scale:       slots[i] ? 1.05 : 1,
+                borderColor: slots?.[i] ? '#22C55E' : '#A78BFA',
+                boxShadow:   slots?.[i] ? '0 0 30px rgba(34, 197, 94, 0.4)' : '0 0 15px rgba(167, 139, 250, 0.1)',
+                scale:       slots?.[i] ? 1.05 : 1,
               }}
               className={`w-24 h-24 rounded-[30px] border-4 border-dashed flex items-center justify-center font-display text-3xl font-black italic transition-all duration-300 ${
-                slots[i]
+                slots?.[i]
                   ? 'bg-green-500/10 border-solid text-green-400'
                   : 'bg-black/40 text-white/10'
               }`}
             >
-              {slots[i] || '?'}
+              {slots?.[i] || '?'}
             </motion.div>
             <span className="text-[10px] font-black text-white/30 uppercase tracking-widest italic">
               {lang === 'es' ? 'Sílaba' : 'Syllable'} {i + 1}
@@ -628,22 +651,7 @@ const SyllablesModule = memo(({ addPoints }) => {
       </AnimatePresence>
 
       {/* Star Particles */}
-      {particles.map(p => (
-        <div
-          key={p.id}
-          className="absolute pointer-events-none font-black"
-          style={{
-            left:       `${p.x}%`,
-            top:        `${p.y}%`,
-            fontSize:   `${p.size}px`,
-            color:      p.color,
-            transform:  `translate(-50%, -50%) rotate(${p.rotation}deg)`,
-            textShadow: `0 0 10px ${p.color}`,
-          }}
-        >
-          ★
-        </div>
-      ))}
+      <canvas ref={particleCanvasRef} className="absolute inset-0 pointer-events-none z-30" />
 
       {/* Feedback toast */}
       <AnimatePresence>
@@ -669,14 +677,12 @@ const SyllablesModule = memo(({ addPoints }) => {
 
       {/* Instructions */}
       {!isWordWon && (
-        <div className="absolute bottom-6 flex items-center gap-6 glass px-8 py-3.5 rounded-[24px] border border-white/10 animate-pulse z-30">
-          <span className="text-2xl">🤏</span>
-          <p className="text-[9px] font-black uppercase tracking-[0.2em] text-white/50 italic">
-            {lang === 'es'
-              ? 'Usa pinza en el aire para atrapar una sílaba y arrástrala a su lugar'
-              : 'Pinch a syllable bubble and drag it to its slot'}
-          </p>
-        </div>
+        <GameInstruction
+          lang={lang}
+          messageEs="Atrapa una sílaba con pinza en el aire y arrástrala a su lugar"
+          messageEn="Pinch a syllable bubble and drag it to its correct slot"
+          icon="🫧"
+        />
       )}
     </div>
   );

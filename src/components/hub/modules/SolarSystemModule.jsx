@@ -1,5 +1,7 @@
-import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import GameInstruction from '../GameInstruction';
+import { addLocalLog } from '../../../services/sync';
 
 const FOOTER_H  = 64;
 const MAX_ZOOM  = 3.5;
@@ -9,7 +11,7 @@ const CDWELL_S  = 0.80;  // seconds to hover over a card button to activate it
 const HAND_COLORS = ['#A78BFA', '#34D399'];
 
 // ── Planet data ────────────────────────────────────────────────────────────────
-const PLANETS = [
+const PLANETS_ES = [
   { name:'Mercurio', color:'#A8A8A8', glow:'#6B7280', r:6,  orbitPx:68,  period:4.1,   moonCount:0, moonR:0, ring:false,
     pages:[
       { icon:'📏', title:'Datos',       text:'Distancia al Sol: 58 M km\nDiámetro: 4 879 km\nDía: 59 días terrestres\nAño: 88 días terrestres' },
@@ -66,6 +68,63 @@ const PLANETS = [
     ]},
 ];
 
+const PLANETS_EN = [
+  { name:'Mercury', color:'#A8A8A8', glow:'#6B7280', r:6,  orbitPx:68,  period:4.1,   moonCount:0, moonR:0, ring:false,
+    pages:[
+      { icon:'📏', title:'Facts',       text:'Distance to Sun: 58 M km\nDiameter: 4,879 km\nDay: 59 Earth days\nYear: 88 Earth days' },
+      { icon:'🌡️', title:'Temperature', text:'Day: +430 °C · Night: −180 °C\n\nLargest temperature range in the solar system!' },
+      { icon:'🤯', title:'Fun Fact',  text:'Although closest to the Sun, it is NOT the hottest. Venus beats it due to its greenhouse effect!' },
+    ]},
+  { name:'Venus', color:'#FDE68A', glow:'#F59E0B', r:9, orbitPx:112, period:10.5, moonCount:0, moonR:0, ring:false,
+    pages:[
+      { icon:'📏', title:'Facts',       text:'Distance to Sun: 108 M km\nDiameter: 12,104 km\nA day on Venus is longer than its year' },
+      { icon:'🌡️', title:'Temperature', text:'Average temp: 462 °C\n\nIts CO₂ atmosphere traps heat like a giant greenhouse.' },
+      { icon:'🔄', title:'Rotation',    text:'Venus rotates in the opposite direction of most planets. The Sun rises in the West!' },
+    ]},
+  { name:'Earth', color:'#3B82F6', glow:'#60A5FA', r:10, orbitPx:160, period:17.0, moonCount:1, moonR:3, ring:false,
+    pages:[
+      { icon:'💧', title:'Water',         text:'71% of the surface is covered in water. The only planet with liquid water on its surface.' },
+      { icon:'📏', title:'Facts',        text:'Distance to Sun: 150 M km\nDiameter: 12,742 km\n1 Moon\nAverage temp: 15 °C' },
+      { icon:'🧬', title:'Life',         text:'Only planet with confirmed life: over 8 million species. Our home in the cosmos!' },
+      { icon:'🛰️', title:'Exploration', text:'More than 5,000 artificial satellites orbit us. The ISS travels at 28,000 km/h.' },
+    ]},
+  { name:'Mars', color:'#EF4444', glow:'#F87171', r:7, orbitPx:218, period:32.0, moonCount:2, moonR:2, ring:false,
+    pages:[
+      { icon:'🌋', title:'Mount Olympus', text:'The tallest volcano in the solar system: 22 km high, 3× taller than Everest!' },
+      { icon:'📏', title:'Facts',        text:'Distance to Sun: 228 M km\nDiameter: 6,779 km\n2 moons: Phobos and Deimos\nYear: 687 Earth days' },
+      { icon:'🚀', title:'Exploration',  text:'Over 50 missions have gone to Mars. Curiosity and Perseverance seek signs of life today.' },
+      { icon:'🔴', title:'Color',        text:'The red color is due to iron oxide. It has the longest canyon in the solar system.' },
+    ]},
+  { name:'Jupiter', color:'#D97706', glow:'#FBBF24', r:24, orbitPx:308, period:84.0, moonCount:4, moonR:3, ring:false,
+    pages:[
+      { icon:'🌀', title:'Great Spot',  text:'The Great Red Spot has been active for over 350 years. The entire Earth fits inside!' },
+      { icon:'📏', title:'Facts',        text:'Distance to Sun: 778 M km\nDiameter: 139,820 km\n95 moons\n1,300 Earths could fit inside' },
+      { icon:'🌙', title:'Moons',        text:'Io, Europa, Ganymede, and Callisto (Galileo, 1610). Europa may have a subsurface ocean.' },
+      { icon:'🛡️', title:'Guardian',    text:'Its huge gravity deflects asteroids and comets, protecting Earth from many impacts.' },
+    ]},
+  { name:'Saturn', color:'#F59E0B', glow:'#FCD34D', r:18, orbitPx:400, period:214.0, moonCount:2, moonR:4, ring:true,
+    pages:[
+      { icon:'💍', title:'Rings',  text:'The rings measure 273,000 km in diameter but are only 1 km thick: ice and rock.' },
+      { icon:'📏', title:'Facts',    text:'Distance to Sun: 1,432 M km\nDiameter: 116,460 km\n146 moons\nWould float in water' },
+      { icon:'🌙', title:'Titan',    text:'Titan has a dense atmosphere and lakes of liquid methane. Candidate for harboring life.' },
+      { icon:'⏱️', title:'Time',   text:'A day lasts 10 h 33 min, but a year equals 29 Earth years!' },
+    ]},
+  { name:'Uranus', color:'#67E8F9', glow:'#22D3EE', r:13, orbitPx:476, period:608.0, moonCount:1, moonR:2, ring:false,
+    pages:[
+      { icon:'↔️', title:'Rotation',      text:'Rotates on its side (97° tilt). Its poles spend decades in total darkness.' },
+      { icon:'📏', title:'Facts',          text:'Distance to Sun: 2,867 M km\nDiameter: 50,724 km\n28 moons\nTemperature: −224 °C' },
+      { icon:'💎', title:'Interior',       text:'It could rain diamonds inside Uranus due to extreme pressure on methane.' },
+      { icon:'🔭', title:'Discovery', text:'First planet discovered with a telescope, by William Herschel in 1781.' },
+    ]},
+  { name:'Neptune', color:'#1D4ED8', glow:'#3B82F6', r:12, orbitPx:538, period:1188.0, moonCount:1, moonR:3, ring:false,
+    pages:[
+      { icon:'💨', title:'Winds',         text:'Winds of 2,100 km/h — the fastest in the solar system.' },
+      { icon:'📏', title:'Facts',            text:'Distance to Sun: 4,495 M km\nDiameter: 49,244 km\n16 moons\n1 year = 165 Earth years' },
+      { icon:'🔭', title:'Discovery',   text:'Predicted mathematically before being observed. Discovered in 1846.' },
+      { icon:'🌙', title:'Triton',           text:'Its largest moon orbits backwards: likely captured from the Kuiper Belt.' },
+    ]},
+];
+
 function lightenHex(hex, amt) {
   const n = parseInt(hex.replace('#',''),16);
   return `rgb(${Math.min(255,(n>>16)+amt)},${Math.min(255,((n>>8)&0xFF)+amt)},${Math.min(255,(n&0xFF)+amt)})`;
@@ -80,15 +139,16 @@ function hitEl(px, py, el, margin=16) {
 }
 
 // ── Component ──────────────────────────────────────────────────────────────────
-const SolarSystemModule = memo(({ addPoints }) => {
+const SolarSystemModule = memo(({ addPoints, lang = 'es' }) => {
   const canvasRef = useRef(null);
 
   const [selectedInfo, setSelectedInfo] = useState(null);
   const [paused,   setPaused]   = useState(false);
   const [visited,  setVisited]  = useState(new Set());
-  // UI de la tarjeta (cursor + progreso dwell) renderizada en DOM por encima de la tarjeta
-  const [cardUI, setCardUI] = useState({ cx: 0, cy: 0, cvis: false, btnId: null, pct: 0 });
-  const cardUISyncRef = useRef({ btnId: null, pct: 0 });
+  
+  const PLANETS = useMemo(() => lang === 'es' ? PLANETS_ES : PLANETS_EN, [lang]);
+  const planetsRef = useRef(PLANETS);
+  planetsRef.current = PLANETS;
 
   const addPointsRef = useRef(addPoints);
   addPointsRef.current = addPoints;
@@ -150,7 +210,7 @@ const SolarSystemModule = memo(({ addPoints }) => {
   },[]);
   const goInfoPage = useCallback((dir)=>{
     const s=stateRef.current;
-    const planet=PLANETS.find(p=>p.name===s.selectedPlanet);
+    const planet=planetsRef.current.find(p=>p.name===s.selectedPlanet);
     if(!planet) return;
     s.infoPage=Math.max(0,Math.min(planet.pages.length-1,s.infoPage+dir));
     setSelectedInfo(prev=>prev?{...prev,currentPage:s.infoPage}:prev);
@@ -164,10 +224,25 @@ const SolarSystemModule = memo(({ addPoints }) => {
     s.selectedPlanet=null; s.infoPage=0; s.paused=false;
     s.cardDwellTarget=null; s.cardDwellTime=[0,0];
     s.cardCloseTime=performance.now();
-    cardUISyncRef.current={ btnId:null, pct:0 };
     setSelectedInfo(null); setPaused(false);
-    setCardUI({ cx:0, cy:0, cvis:false, btnId:null, pct:0 });
+    const cursorEl = document.getElementById('solar-card-cursor');
+    if (cursorEl) cursorEl.style.display = 'none';
   },[]);
+
+  // Monitor unhandled runtime errors
+  useEffect(() => {
+    const handleError = (e) => {
+      try {
+        const msg = e.message || (e.error && e.error.message) || String(e);
+        const stack = (e.error && e.error.stack) || '';
+        addLocalLog('MODULE_CRASH_RAW', `Error de runtime en SolarSystem: ${msg}\nStack: ${stack}`);
+      } catch (err) {
+        console.error('Error logging SolarSystem runtime error:', err);
+      }
+    };
+    window.addEventListener('error', handleError);
+    return () => window.removeEventListener('error', handleError);
+  }, []);
 
   // ── RAF loop ───────────────────────────────────────────────────────────────
   useEffect(()=>{
@@ -224,7 +299,7 @@ const SolarSystemModule = memo(({ addPoints }) => {
         ctx.scale(vs,vs);
 
         // Orbits
-        PLANETS.forEach(p=>{
+        planetsRef.current.forEach(p=>{
           if(!circleOnScreen(ox,oy,p.orbitPx*vs,W,H,10)) return;
           ctx.beginPath(); ctx.arc(0,0,p.orbitPx,0,Math.PI*2);
           ctx.strokeStyle=s.selectedPlanet===p.name?`${p.glow}50`:'rgba(255,255,255,0.055)';
@@ -263,7 +338,7 @@ const SolarSystemModule = memo(({ addPoints }) => {
 
         // Planets
         const ssPositions=[];
-        PLANETS.forEach(p=>{
+        planetsRef.current.forEach(p=>{
           const angle=(s.time/p.period)*Math.PI*2;
           const px=Math.cos(angle)*p.orbitPx, py=Math.sin(angle)*p.orbitPx;
           const scrPx=ox+px*vs, scrPy=oy+py*vs;
@@ -296,11 +371,11 @@ const SolarSystemModule = memo(({ addPoints }) => {
           ctx.beginPath(); ctx.arc(px,py,p.r,0,Math.PI*2); ctx.fillStyle=pg;
           ctx.shadowBlur=(isHov||isSel?20:5)/vs; ctx.shadowColor=p.glow;
           ctx.fill(); ctx.shadowBlur=0;
-          if(p.name==='Tierra'){
+          if(p.name==='Tierra' || p.name==='Earth'){
             ctx.beginPath(); ctx.ellipse(px,py+p.r*0.1,p.r*0.72,p.r*0.45,0,0,Math.PI*2);
             ctx.strokeStyle='rgba(255,255,255,0.18)'; ctx.lineWidth=p.r*0.38; ctx.stroke();
           }
-          if(p.name==='Júpiter'){
+          if(p.name==='Júpiter' || p.name==='Jupiter'){
             [-0.35,0,0.35].forEach(ofs=>{
               ctx.save(); ctx.beginPath(); ctx.ellipse(px,py+ofs*p.r,p.r,p.r*0.15,0,0,Math.PI*2); ctx.clip();
               ctx.fillStyle='rgba(160,95,30,0.20)'; ctx.fillRect(px-p.r,py-p.r,p.r*2,p.r*2); ctx.restore();
@@ -309,7 +384,7 @@ const SolarSystemModule = memo(({ addPoints }) => {
             ctx.fillStyle='rgba(185,75,40,0.55)'; ctx.fill();
           }
           for(let mi=0;mi<p.moonCount;mi++){
-            const mA=s.time*(p.name==='Tierra'?5.5:2.5-mi*0.35)+mi*Math.PI/Math.max(p.moonCount,1);
+            const mA=s.time*((p.name==='Tierra' || p.name==='Earth')?5.5:2.5-mi*0.35)+mi*Math.PI/Math.max(p.moonCount,1);
             const mD=p.r*(2.0+mi*0.9);
             const mx=px+Math.cos(mA)*mD, my=py+Math.sin(mA)*mD;
             if(!circleOnScreen(ox+mx*vs,oy+my*vs,p.moonR*vs+5,W,H)) continue;
@@ -378,7 +453,7 @@ const SolarSystemModule = memo(({ addPoints }) => {
               {id:'solar-prev-btn',  fn: ()=>goInfoPage(-1)},
               {id:'solar-next-btn',  fn: ()=>goInfoPage(1)},
             ];
-            const cp=PLANETS.find(p=>p.name===s.selectedPlanet);
+            const cp=planetsRef.current.find(p=>p.name===s.selectedPlanet);
             if(cp) cp.pages.forEach((_,di)=>
               CARD_BTNS.push({id:`solar-dot-${di}`, fn:()=>setInfoPageFn(di)})
             );
@@ -424,29 +499,36 @@ const SolarSystemModule = memo(({ addPoints }) => {
           s.hoveredPlanet[i]=hover;
 
           // ── DWELL-TO-SELECT: hover planet for DWELL_S seconds → open card ─
-          if(hover && hover===s.hoverDwellTarget[i]){
-            s.hoverDwell[i]+=dt;
-            if(s.hoverDwell[i]>=DWELL_S){
-              s.hoverDwell[i]=0; s.hoverDwellTarget[i]=null;
-              const planet=PLANETS.find(p=>p.name===hover);
-              if(planet){
-                const isNew=!s.visited.has(hover);
-                if(isNew){s.visited.add(hover);addPointsRef.current(80);setVisited(new Set(s.visited));}
-                s.selectedPlanet=hover; s.infoPage=0; s.paused=true;
-                s.cardOpenTime=performance.now();
-                setPaused(true);
-                const pos=s.ssPositions.find(p=>p.name===hover);
-                if(pos){
-                  const scrPX=ox+pos.x*vs, scrPY=oy+pos.y*vs;
-                  s.targetX+=W*0.5-scrPX; s.targetY+=H*0.5-scrPY;
-                  if(s.targetScale<2.0) s.targetScale=2.4;
+          if(hover){
+            if(hover===s.hoverDwellTarget[i]){
+              s.hoverDwell[i]+=dt;
+              if(s.hoverDwell[i]>=DWELL_S){
+                s.hoverDwell[i]=0; s.hoverDwellTarget[i]=null;
+                const planet=planetsRef.current.find(p=>p.name===hover);
+                if(planet){
+                  const isNew=!s.visited.has(hover);
+                  if(isNew){s.visited.add(hover);addPointsRef.current(80);setVisited(new Set(s.visited));}
+                  s.selectedPlanet=hover; s.infoPage=0; s.paused=true;
+                  s.cardOpenTime=performance.now();
+                  setPaused(true);
+                  const pos=s.ssPositions.find(p=>p.name===hover);
+                  if(pos){
+                    const scrPX=ox+pos.x*vs, scrPY=oy+pos.y*vs;
+                    s.targetX+=W*0.5-scrPX; s.targetY+=H*0.5-scrPY;
+                    if(s.targetScale<2.0) s.targetScale=2.4;
+                  }
+                  setSelectedInfo({name:planet.name,color:planet.color,glow:planet.glow,pages:planet.pages,currentPage:0});
                 }
-                setSelectedInfo({name:planet.name,color:planet.color,glow:planet.glow,pages:planet.pages,currentPage:0});
               }
+            } else {
+              s.hoverDwell[i]=0;
+              s.hoverDwellTarget[i]=hover;
             }
           } else {
-            s.hoverDwell[i]=0;
-            s.hoverDwellTarget[i]=hover||null;
+            s.hoverDwell[i]=Math.max(0, s.hoverDwell[i] - dt * 1.5);
+            if(s.hoverDwell[i]===0){
+              s.hoverDwellTarget[i]=null;
+            }
           }
 
           // ── Pinch START: claim role (pan or zoom — planet select is dwell only) ─
@@ -519,17 +601,55 @@ const SolarSystemModule = memo(({ addPoints }) => {
           }
         } // end for each hand
 
-        // ── Volcar UI de tarjeta a React (con throttle para evitar renders) ──
-        if(cardFrame){
-          const prev=cardUISyncRef.current;
-          const changed = cardFrame.btnId!==prev.btnId || Math.abs(cardFrame.pct-prev.pct)>0.04 || cardFrame.cvis;
-          if(changed){
-            cardUISyncRef.current={ btnId:cardFrame.btnId, pct:cardFrame.pct };
-            setCardUI({ cx:cardFrame.cx, cy:cardFrame.cy, cvis:cardFrame.cvis, btnId:cardFrame.btnId, pct:cardFrame.pct });
+        // ── Actualizar cursor y progresos de tarjeta directo en el DOM ──
+        const closeProg = document.getElementById('solar-close-btn-progress');
+        const prevProg = document.getElementById('solar-prev-btn-progress');
+        const nextProg = document.getElementById('solar-next-btn-progress');
+        const cursorEl = document.getElementById('solar-card-cursor');
+
+        if (closeProg) { closeProg.style.display = 'none'; closeProg.style.transform = 'scaleY(0)'; }
+        if (prevProg) { prevProg.style.display = 'none'; prevProg.style.transform = 'scaleX(0)'; }
+        if (nextProg) { nextProg.style.display = 'none'; nextProg.style.transform = 'scaleX(0)'; }
+
+        if (cardFrame && cardFrame.cvis) {
+          if (cursorEl) {
+            cursorEl.style.left = `${cardFrame.cx}px`;
+            cursorEl.style.top = `${cardFrame.cy}px`;
+            cursorEl.style.display = 'block';
+
+            if (cardFrame.btnId) {
+              cursorEl.style.width = '22px';
+              cursorEl.style.height = '22px';
+              cursorEl.style.border = '2.5px solid #34D399';
+              cursorEl.style.boxShadow = '0 0 14px rgba(52,211,153,0.7)';
+              cursorEl.style.background = 'rgba(52,211,153,0.25)';
+            } else {
+              cursorEl.style.width = '26px';
+              cursorEl.style.height = '26px';
+              cursorEl.style.border = '2.5px solid rgba(255,255,255,0.6)';
+              cursorEl.style.boxShadow = 'none';
+              cursorEl.style.background = 'transparent';
+            }
           }
+
+          if (cardFrame.btnId === 'solar-close-btn' && closeProg) {
+            closeProg.style.display = 'block';
+            closeProg.style.transform = `scaleY(${cardFrame.pct})`;
+          } else if (cardFrame.btnId === 'solar-prev-btn' && prevProg) {
+            prevProg.style.display = 'block';
+            prevProg.style.transform = `scaleX(${cardFrame.pct})`;
+          } else if (cardFrame.btnId === 'solar-next-btn' && nextProg) {
+            nextProg.style.display = 'block';
+            nextProg.style.transform = `scaleX(${cardFrame.pct})`;
+          }
+        } else {
+          if (cursorEl) cursorEl.style.display = 'none';
         }
 
-      } catch(err){ console.warn('[SolarSystem]',err); }
+      } catch(err){
+        console.error('[SolarSystem] error in loop:', err);
+        addLocalLog('MODULE_ERROR', `Error en física de SolarSystem: ${err.message}\nStack: ${err.stack}`);
+      }
     };
 
     animId=requestAnimationFrame(loop);
@@ -544,18 +664,22 @@ const SolarSystemModule = memo(({ addPoints }) => {
       {/* Header */}
       <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 glass-dark px-6 py-2.5 rounded-2xl border border-white/10 shadow-xl">
         <span>🪐</span>
-        <span className="text-[9px] font-black uppercase tracking-[0.3em] text-white/55">Sistema Solar</span>
+        <span className="text-[9px] font-black uppercase tracking-[0.3em] text-white/55">
+          {lang === 'es' ? 'Sistema Solar' : 'Solar System'}
+        </span>
         {visited.size>0&&(<><div className="w-px h-4 bg-white/20"/>
-          <span className="text-[9px] font-black text-amber-400">{visited.size}/{PLANETS.length} planetas</span></>)}
+          <span className="text-[9px] font-black text-amber-400">
+            {visited.size}/{PLANETS.length} {lang === 'es' ? 'planetas' : 'planets'}
+          </span></>)}
       </div>
 
       {/* Zoom / pause controls */}
       <div className="absolute top-4 right-4 z-20 flex flex-col gap-2">
         {[
-          {fn:zoomIn,    label:'+', title:'Acercar'},
-          {fn:zoomOut,   label:'−', title:'Alejar'},
-          {fn:resetView, label:'⌂', title:'Restablecer'},
-          {fn:togglePause, label:paused?'▶':'⏸', title:paused?'Reanudar':'Pausar'},
+          {fn:zoomIn,    label:'+', title: lang === 'es' ? 'Acercar' : 'Zoom In'},
+          {fn:zoomOut,   label:'−', title: lang === 'es' ? 'Alejar' : 'Zoom Out'},
+          {fn:resetView, label:'⌂', title: lang === 'es' ? 'Restablecer' : 'Reset View'},
+          {fn:togglePause, label:paused?'▶':'⏸', title:paused ? (lang === 'es' ? 'Reanudar' : 'Resume') : (lang === 'es' ? 'Pausar' : 'Pause')},
         ].map(b=>(
           <button key={b.title} title={b.title} onClick={b.fn}
             className="w-10 h-10 glass rounded-xl border border-white/10 text-white/55 hover:text-white text-base font-black flex items-center justify-center transition-all active:scale-95">
@@ -596,7 +720,7 @@ const SolarSystemModule = memo(({ addPoints }) => {
                     {selectedInfo.name}
                   </h3>
                   <p className="text-[9px] font-black uppercase tracking-[0.3em] text-white/35">
-                    Página {selectedInfo.currentPage+1} de {selectedInfo.pages.length}
+                    {lang === 'es' ? 'Página' : 'Page'} {selectedInfo.currentPage+1} {lang === 'es' ? 'de' : 'of'} {selectedInfo.pages?.length ?? 0}
                   </p>
                 </div>
                 {/* Close button — id required for dwell detection */}
@@ -605,9 +729,7 @@ const SolarSystemModule = memo(({ addPoints }) => {
                   onClick={closeInfo}
                   className="relative overflow-hidden w-12 h-12 flex items-center justify-center rounded-2xl border border-white/15 text-white/60 hover:text-white hover:bg-white/10 transition-all text-xl font-black flex-shrink-0"
                 >
-                  {cardUI.btnId === 'solar-close-btn' && (
-                    <span className="absolute inset-0 bg-red-400/40 origin-bottom" style={{ transform: `scaleY(${cardUI.pct})` }} />
-                  )}
+                  <span id="solar-close-btn-progress" className="absolute inset-0 bg-red-400/40 origin-bottom" style={{ transform: 'scaleY(0)', display: 'none' }} />
                   <span className="relative z-10">✕</span>
                 </button>
               </div>
@@ -633,7 +755,7 @@ const SolarSystemModule = memo(({ addPoints }) => {
 
               {/* Page dots */}
               <div className="flex justify-center gap-2.5 py-3">
-                {selectedInfo.pages.map((_,i)=>(
+                {(selectedInfo?.pages ?? []).map((_,i)=>(
                   <button id={`solar-dot-${i}`} key={i}
                     onClick={()=>setInfoPageFn(i)}
                     className="rounded-full transition-all duration-200"
@@ -651,40 +773,34 @@ const SolarSystemModule = memo(({ addPoints }) => {
                   onClick={()=>goInfoPage(-1)}
                   disabled={selectedInfo.currentPage===0}
                   className="relative overflow-hidden flex-1 py-4 glass rounded-2xl border border-white/10 text-white/60 hover:text-white disabled:opacity-20 text-sm font-black transition-all active:scale-95">
-                  {cardUI.btnId === 'solar-prev-btn' && (
-                    <span className="absolute inset-0 bg-white/25 origin-left" style={{ transform: `scaleX(${cardUI.pct})` }} />
-                  )}
-                  <span className="relative z-10">← Anterior</span>
+                  <span id="solar-prev-btn-progress" className="absolute inset-0 bg-white/25 origin-left" style={{ transform: 'scaleX(0)', display: 'none' }} />
+                  <span className="relative z-10">← {lang === 'es' ? 'Anterior' : 'Previous'}</span>
                 </button>
                 <button id="solar-next-btn"
                   onClick={()=>goInfoPage(1)}
-                  disabled={selectedInfo.currentPage===selectedInfo.pages.length-1}
+                  disabled={selectedInfo.currentPage===(selectedInfo.pages?.length ?? 1)-1}
                   className="relative overflow-hidden flex-1 py-4 glass rounded-2xl border border-white/10 text-white/60 hover:text-white disabled:opacity-20 text-sm font-black transition-all active:scale-95">
-                  {cardUI.btnId === 'solar-next-btn' && (
-                    <span className="absolute inset-0 bg-white/25 origin-left" style={{ transform: `scaleX(${cardUI.pct})` }} />
-                  )}
-                  <span className="relative z-10">Siguiente →</span>
+                  <span id="solar-next-btn-progress" className="absolute inset-0 bg-white/25 origin-left" style={{ transform: 'scaleX(0)', display: 'none' }} />
+                  <span className="relative z-10">{lang === 'es' ? 'Siguiente' : 'Next'} →</span>
                 </button>
               </div>
 
               <p className="text-center text-[8.5px] font-black uppercase tracking-[0.25em] text-white/25 pb-4">
-                👆 Mantén el puntero sobre un botón para activarlo
+                {lang === 'es' ? '👆 Mantén el puntero sobre un botón para activarlo' : '👆 Hover pointer over a button to activate'}
               </p>
             </motion.div>
 
             {/* Cursor DOM por encima de la tarjeta (el del canvas queda detrás) */}
-            {cardUI.cvis && (
-              <div
-                className="absolute z-[55] pointer-events-none -translate-x-1/2 -translate-y-1/2 rounded-full"
-                style={{
-                  left: cardUI.cx, top: cardUI.cy,
-                  width: cardUI.btnId ? 22 : 26, height: cardUI.btnId ? 22 : 26,
-                  border: `2.5px solid ${cardUI.btnId ? '#34D399' : 'rgba(255,255,255,0.6)'}`,
-                  boxShadow: cardUI.btnId ? '0 0 14px rgba(52,211,153,0.7)' : 'none',
-                  background: cardUI.btnId ? 'rgba(52,211,153,0.25)' : 'transparent',
-                }}
-              />
-            )}
+            <div
+              id="solar-card-cursor"
+              className="absolute z-[55] pointer-events-none -translate-x-1/2 -translate-y-1/2 rounded-full"
+              style={{
+                display: 'none',
+                width: 26, height: 26,
+                border: '2.5px solid rgba(255,255,255,0.6)',
+                background: 'transparent'
+              }}
+            />
           </>
         )}
       </AnimatePresence>
@@ -695,7 +811,7 @@ const SolarSystemModule = memo(({ addPoints }) => {
           <motion.div initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} exit={{opacity:0}}
             className="absolute bottom-24 left-1/2 -translate-x-1/2 z-50 px-8 py-3 rounded-2xl border border-amber-500/40 bg-amber-500/10">
             <p className="text-amber-400 font-black uppercase tracking-widest text-[10px] text-center">
-              🏆 ¡Exploraste los 8 planetas!
+              🏆 {lang === 'es' ? '¡Exploraste los 8 planetas!' : 'You explored all 8 planets!'}
             </p>
           </motion.div>
         )}
@@ -703,15 +819,12 @@ const SolarSystemModule = memo(({ addPoints }) => {
 
       {/* Gesture guide */}
       {!selectedInfo&&(
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 glass px-6 py-2.5 rounded-2xl border border-white/10 animate-pulse">
-          <div className="flex items-center gap-4 text-[9px] font-black uppercase tracking-[0.12em]">
-            <span className="text-[#FCD34D]">👆 Mira un planeta → explorar</span>
-            <div className="w-px h-3 bg-white/20"/>
-            <span className="text-[#A78BFA]">🤏 Pellizca espacio → mover</span>
-            <div className="w-px h-3 bg-white/20"/>
-            <span className="text-white/40">🤏 2ª mano ↕ → zoom</span>
-          </div>
-        </div>
+        <GameInstruction
+          messageEs="Mira un planeta para explorar · Pellizca el espacio para mover · Usa la 2ª mano verticalmente para zoom"
+          messageEn="Hover over a planet to explore · Pinch space to pan · Use 2nd hand vertically to zoom"
+          lang={lang}
+          icon="🪐"
+        />
       )}
     </div>
   );
