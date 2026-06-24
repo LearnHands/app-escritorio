@@ -1,4 +1,4 @@
-import{r as p,j as o}from"./vendor-react-CCs47zyD.js";import{G as Me}from"./GameInstruction-CqYXtLQ4.js";import{a as ue}from"./index-Dc8w35Gn.js";import{A as ie,m as Q}from"./vendor-motion-D0n9diHX.js";import"./vendor-misc-Fte3Lg8O.js";import"./vendor-lucide-CXlCm4V3.js";const ke=64,he=3.5,pe=.35,ge=1.2,fe=.8,xe=["#A78BFA","#34D399"],Ce=[{name:"Mercurio",color:"#A8A8A8",glow:"#6B7280",r:6,orbitPx:68,period:4.1,moonCount:0,moonR:0,ring:!1,pages:[{icon:"📏",title:"Datos",text:`Distancia al Sol: 58 M km
+import{r as p,j as o}from"./vendor-react-CCs47zyD.js";import{G as Me}from"./GameInstruction-CqYXtLQ4.js";import{a as ue}from"./index-BySlAQtr.js";import{A as ie,m as Q}from"./vendor-motion-D0n9diHX.js";import"./vendor-misc-Fte3Lg8O.js";import"./vendor-lucide-D_exAzvd.js";const ke=64,he=3.5,pe=.35,ge=1.2,fe=.8,xe=["#A78BFA","#34D399"],Ce=[{name:"Mercurio",color:"#A8A8A8",glow:"#6B7280",r:6,orbitPx:68,period:4.1,moonCount:0,moonR:0,ring:!1,pages:[{icon:"📏",title:"Datos",text:`Distancia al Sol: 58 M km
 Diámetro: 4 879 km
 Día: 59 días terrestres
 Año: 88 días terrestres`},{icon:"🌡️",title:"Temperatura",text:`Día: +430 °C · Noche: −180 °C

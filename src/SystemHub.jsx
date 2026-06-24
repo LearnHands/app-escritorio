@@ -4,7 +4,7 @@ import {
   Palette, Music, Puzzle, Play, ArrowLeft, Trophy, LogOut, BookOpen,
   Gamepad2, Compass, Shield, Award, Lock, FlaskConical, GraduationCap, Joystick,
   Zap, Atom, Code2, DollarSign, Clock, Heart, Languages, Wifi, WifiOff, RefreshCw, User, LogIn,
-  Plus, Trash2, Copy, CheckCircle, Users, KeyRound, RotateCcw
+  Plus, Trash2, Copy, CheckCircle, Users, KeyRound, RotateCcw, Settings
 } from 'lucide-react';
 
 // Hooks
@@ -17,7 +17,7 @@ import GameErrorBoundary from './components/hub/GameErrorBoundary';
 
 // Services
 import { t, getLanguage, setLanguage } from './services/i18n';
-import { addGameMetric, addLocalLog, triggerSync, getMetricsQueue, getApiUrl, seedMetricsHistory } from './services/sync';
+import { addGameMetric, addLocalLog, triggerSync, getMetricsQueue, getApiUrl, setApiUrl, seedMetricsHistory } from './services/sync';
 import { addUxMetric, triggerUxSync, getUxQueue, seedUxHistory } from './services/uxTracker';
 
 // ── Game modules — lazy-loaded so each becomes its own JS chunk ───────────────
@@ -48,25 +48,50 @@ const MENU_LOCK_MS = 2000;
 const SystemHub = ({ onExit }) => {
   // Configuración de vista y flujo
   const [view, setView] = useState(() => {
-    // Forzar cierre de sesión por única vez al instalar v4.1.2 (nueva clave para limpiar sesión persistida de profe)
-    const cleaned = localStorage.getItem('learnhands_session_cleaned_v412');
+    // Forzar cierre de sesión por única vez al instalar v4.2.0 (cambio breaking a cédula)
+    const cleaned = localStorage.getItem('learnhands_session_cleaned_v420');
     if (!cleaned) {
-      localStorage.removeItem('learnhands_session_user');
-      localStorage.removeItem('learnhands_session_role');
-      localStorage.setItem('learnhands_session_cleaned_v412', 'true');
+      const savedRole = localStorage.getItem('learnhands_session_role');
+      const savedUser = localStorage.getItem('learnhands_session_user');
+      if (savedRole !== 'teacher' || !savedUser || !/^\d{10}$/.test(savedUser)) {
+        localStorage.removeItem('learnhands_session_user');
+        localStorage.removeItem('learnhands_session_role');
+        localStorage.removeItem('learnhands_session_display_name');
+        localStorage.removeItem('learnhands_student_classes');
+        localStorage.removeItem('learnhands_active_class');
+      }
+      localStorage.setItem('learnhands_session_cleaned_v420', 'true');
     }
     const savedUser = localStorage.getItem('learnhands_session_user');
     return savedUser ? 'HOME' : 'LOGIN';
   });
   
   const [sessionUser, setSessionUser] = useState(() => localStorage.getItem('learnhands_session_user') || '');
+  const [sessionDisplayName, setSessionDisplayName] = useState(() => localStorage.getItem('learnhands_session_display_name') || '');
   const [userRole, setUserRole] = useState(() => localStorage.getItem('learnhands_session_role') || 'student');
   
-  const [loginInput, setLoginInput] = useState('');
+  const [loginInput, setLoginInput] = useState('');        // cédula (alumnos) o username (profe)
+  const [displayNameInput, setDisplayNameInput] = useState(''); // nombre completo (solo registro nuevo)
+  const [classCodeInput, setClassCodeInput] = useState('');     // código de clase opcional
+  const [isNewStudent, setIsNewStudent] = useState(false);      // true = registro, false = login
   const [loginError, setLoginError] = useState('');
   const [isTeacherMode, setIsTeacherMode] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
-  
+
+  // Clases del alumno
+  const [studentClasses, setStudentClasses] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('learnhands_student_classes') || '[]'); } catch { return []; }
+  });
+  const [activeStudentClass, setActiveStudentClass] = useState(() => localStorage.getItem('learnhands_active_class') || null);
+  const [showClassSwitcher, setShowClassSwitcher] = useState(false);
+  const [joinClassInput, setJoinClassInput] = useState('');
+  const [joinClassError, setJoinClassError] = useState('');
+  const [isJoiningClass, setIsJoiningClass] = useState(false);
+
+  // Servidor API
+  const [showApiSettings, setShowApiSettings] = useState(false);
+  const [tempApiUrl, setTempApiUrl] = useState(() => getApiUrl());
+
   const [currentGame, setCurrentGame] = useState(null);
   const [menuLocked, setMenuLocked] = useState(false);
   const [activeCardLock, setActiveCardLock] = useState(null);
@@ -99,6 +124,7 @@ const SystemHub = ({ onExit }) => {
   const [studentsList, setStudentsList] = useState([]);
   const [isLoadingStudents, setIsLoadingStudents] = useState(false);
   const [studentsError, setStudentsError] = useState('');
+  const [selectedTeacherClassCode, setSelectedTeacherClassCode] = useState('');
 
   // Estados para Gestión de Clases
   const [classesList, setClassesList] = useState([]);
@@ -399,66 +425,204 @@ const SystemHub = ({ onExit }) => {
       triggerSync();
       triggerUxSync();
     } else {
-      if (!usernameClean) {
-        setLoginError(t('login_required', lang));
+      // ── MODO ALUMNO ─────────────────────────────────────────────────────────
+      const raw = loginInput.trim();
+
+      if (!raw) {
+        setLoginError(lang === 'es' ? 'Ingresa tu cédula.' : 'Enter your ID number.');
         return;
       }
 
-      // Evitar que alumnos ingresen como la profesora o administrador sin contraseña
-      if (usernameClean.toLowerCase() === 'kathepastaz' || usernameClean.toLowerCase() === 'grupoadmin') {
-        setLoginError(t('login_use_teacher_login', lang));
+      // Validar 10 dígitos numéricos
+      if (!/^\d{10}$/.test(raw)) {
+        setLoginError(lang === 'es' ? 'La cédula debe tener exactamente 10 dígitos.' : 'ID must be exactly 10 digits.');
         return;
       }
 
-      const nameRegex = /^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]{3,25}$/;
-      if (!nameRegex.test(usernameClean)) {
-        setLoginError(t('login_invalid_name', lang));
-        return;
+      // Si es un nuevo alumno (ya detectado), validar nombre
+      if (isNewStudent) {
+        // Sanitizar nombre: sin tildes, sin símbolos
+        const nameRaw = displayNameInput.trim();
+        const nameSanitized = nameRaw
+          .normalize('NFD').replace(/[\u0300-\u036f]/g, '')  // quitar tildes
+          .replace(/[^a-zA-Z0-9\s]/g, '')                    // quitar símbolos
+          .replace(/\s+/g, ' ').trim();
+
+        if (!nameSanitized || nameSanitized.length < 2) {
+          setLoginError(lang === 'es' ? 'Ingresa tu nombre completo (sin tildes ni símbolos).' : 'Enter your full name (no accents or symbols).');
+          return;
+        }
+        if (nameSanitized.length > 50) {
+          setLoginError(lang === 'es' ? 'El nombre no puede tener más de 50 caracteres.' : 'Name cannot exceed 50 characters.');
+          return;
+        }
       }
 
       setIsLoggingIn(true);
       setLoginError('');
 
-      // Registrar/actualizar al alumno en la base de datos (fire and forget si offline)
-      try {
-        await fetch(`${getApiUrl()}/api/auth/register`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: usernameClean, role: 'student' }),
-          signal: AbortSignal.timeout(5000)
-        });
-      } catch (err) {
-        // Sin conexión — el registro se intentará la próxima vez
-        console.warn('[Register] Sin conexión, el alumno se registrará cuando haya internet:', err.message);
-        // Guardar pendiente de registro
-        const pending = JSON.parse(localStorage.getItem('learnhands_pending_registrations') || '[]');
-        if (!pending.find(p => p.username === usernameClean)) {
-          pending.push({ username: usernameClean, role: 'student', created_at: new Date().toISOString() });
-          localStorage.setItem('learnhands_pending_registrations', JSON.stringify(pending));
+      // Si no tenemos internet y no es un alumno nuevo: entrar con cédula local
+      if (!navigator.onLine) {
+        const savedCedula = localStorage.getItem('learnhands_session_user');
+        const savedDisplay = localStorage.getItem('learnhands_session_display_name');
+        if (savedCedula === raw) {
+          const role = 'student';
+          setSessionUser(raw);
+          setSessionDisplayName(savedDisplay || raw);
+          setUserRole(role);
+          setLoginError('');
+          setIsLoggingIn(false);
+          setScores({});
+          addLocalLog('USER_LOGIN', `Alumno '${savedDisplay || raw}' inició sesión offline.`);
+          setView('HOME');
+          return;
+        } else {
+          setLoginError(lang === 'es' ? 'Sin conexión: solo puedes ingresar con tu cédula guardada.' : 'Offline: can only log in with your saved ID.');
+          setIsLoggingIn(false);
+          return;
         }
       }
 
-      const role = 'student';
-      localStorage.setItem('learnhands_session_user', usernameClean);
-      localStorage.setItem('learnhands_session_role', role);
-      setSessionUser(usernameClean);
-      setUserRole(role);
-      setLoginError('');
-      setIsLoggingIn(false);
-      setScores({});
-      addLocalLog('USER_LOGIN', `El usuario "${usernameClean}" ha iniciado sesión con rol: STUDENT.`);
-      addUxMetric(usernameClean, 'LOGIN', 'HUB', 1, { role });
-      setView('HOME');
-      triggerSync();
-      triggerUxSync();
+      try {
+        // Verificar si la cédula existe en la API
+        if (!isNewStudent) {
+          const checkRes = await fetch(`${getApiUrl()}/api/auth/check-cedula/${raw}`, {
+            signal: AbortSignal.timeout(5000)
+          });
+          const checkData = await checkRes.json();
+
+          if (!checkData.valid) {
+            setLoginError(lang === 'es' ? 'Cédula inválida.' : 'Invalid ID number.');
+            setIsLoggingIn(false);
+            return;
+          }
+
+          if (!checkData.exists) {
+            // Nuevo alumno — pedir nombre y clase
+            setIsNewStudent(true);
+            setIsLoggingIn(false);
+            setLoginError(lang === 'es' ? '¡Cédula nueva! Ingresa tu nombre para registrarte.' : 'New ID! Enter your name to register.');
+            return;
+          }
+
+          // Alumno existente → login (POST a register que actúa como login)
+          const resp = await fetch(`${getApiUrl()}/api/auth/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cedula: raw }),
+            signal: AbortSignal.timeout(5000)
+          });
+          const data = await resp.json();
+          if (!resp.ok || !data.success) {
+            setLoginError(data.error || 'Error al iniciar sesión.');
+            setIsLoggingIn(false);
+            return;
+          }
+
+          const displayName = data.display_name || raw;
+          const classes = data.classes || [];
+          const activeClass = data.class_code || (classes[0]?.class_code) || null;
+
+          localStorage.setItem('learnhands_session_user', raw);
+          localStorage.setItem('learnhands_session_display_name', displayName);
+          localStorage.setItem('learnhands_session_role', 'student');
+          localStorage.setItem('learnhands_student_classes', JSON.stringify(classes));
+          if (activeClass) localStorage.setItem('learnhands_active_class', activeClass);
+
+          setSessionUser(raw);
+          setSessionDisplayName(displayName);
+          setUserRole('student');
+          setStudentClasses(classes);
+          setActiveStudentClass(activeClass);
+          setLoginError('');
+          setIsLoggingIn(false);
+          setScores({});
+          addLocalLog('USER_LOGIN', `Alumno '${displayName}' (${raw}) inició sesión.`);
+          addUxMetric(raw, 'LOGIN', 'HUB', 1, { role: 'student' });
+          setView('HOME');
+          triggerSync();
+          triggerUxSync();
+          return;
+        }
+
+        // ── Registro de nuevo alumno ────────────────────────────────────────
+        const nameSanitized = displayNameInput.trim()
+          .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+          .replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
+
+        const classCode = classCodeInput.trim().toUpperCase() || null;
+
+        const resp = await fetch(`${getApiUrl()}/api/auth/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cedula: raw, display_name: nameSanitized, class_code: classCode }),
+          signal: AbortSignal.timeout(8000)
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data.success) {
+          setLoginError(data.error || 'Error al registrarte.');
+          setIsLoggingIn(false);
+          return;
+        }
+
+        const displayName = data.display_name || nameSanitized;
+        const classes = data.classes || [];
+        const activeClass = data.class_code || (classes[0]?.class_code) || null;
+
+        localStorage.setItem('learnhands_session_user', raw);
+        localStorage.setItem('learnhands_session_display_name', displayName);
+        localStorage.setItem('learnhands_session_role', 'student');
+        localStorage.setItem('learnhands_student_classes', JSON.stringify(classes));
+        if (activeClass) localStorage.setItem('learnhands_active_class', activeClass);
+
+        setSessionUser(raw);
+        setSessionDisplayName(displayName);
+        setUserRole('student');
+        setStudentClasses(classes);
+        setActiveStudentClass(activeClass);
+        setLoginError('');
+        setIsLoggingIn(false);
+        setScores({});
+        addLocalLog('USER_LOGIN', `Nuevo alumno '${displayName}' (${raw}) registrado.`);
+        addUxMetric(raw, 'LOGIN', 'HUB', 1, { role: 'student' });
+        setView('HOME');
+        triggerSync();
+        triggerUxSync();
+
+      } catch (err) {
+        console.error('[Login Alumno] Error:', err.message);
+        // Si tenemos datos locales para esta cédula, permitir acceso offline
+        const savedCedula = localStorage.getItem('learnhands_session_user');
+        if (savedCedula === raw) {
+          const savedDisplay = localStorage.getItem('learnhands_session_display_name') || raw;
+          setSessionUser(raw);
+          setSessionDisplayName(savedDisplay);
+          setUserRole('student');
+          setLoginError('');
+          setIsLoggingIn(false);
+          setScores({});
+          addLocalLog('USER_LOGIN', `Alumno '${savedDisplay}' inició sesión offline (fallback).`);
+          setView('HOME');
+        } else {
+          setLoginError(lang === 'es' ? 'Sin conexión. No se pudo verificar tu cédula.' : 'No connection. Could not verify your ID.');
+          setIsLoggingIn(false);
+        }
+      }
     }
   };
 
   const handleLogout = () => {
     localStorage.removeItem('learnhands_session_user');
     localStorage.removeItem('learnhands_session_role');
+    localStorage.removeItem('learnhands_session_display_name');
+    localStorage.removeItem('learnhands_student_classes');
+    localStorage.removeItem('learnhands_active_class');
     setSessionUser('');
+    setSessionDisplayName('');
     setUserRole('student');
+    setStudentClasses([]);
+    setActiveStudentClass(null);
+    setIsNewStudent(false);
     setView('LOGIN');
     setLoginInput('');
     setPasswordInput('');
@@ -467,7 +631,70 @@ const SystemHub = ({ onExit }) => {
     addLocalLog('USER_LOGOUT', 'Usuario ha cerrado sesión.');
   };
 
-  // (handleLogout removido para persistencia fija de login por única vez)
+  // Unirse a una clase (alumno)
+  const handleJoinClass = async () => {
+    const code = joinClassInput.trim().toUpperCase();
+    if (!code) {
+      setJoinClassError(lang === 'es' ? 'Ingresa un código de clase.' : 'Enter a class code.');
+      return;
+    }
+    setIsJoiningClass(true);
+    setJoinClassError('');
+    try {
+      const res = await fetch(`${getApiUrl()}/api/student/join-class`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: sessionUser, class_code: code }),
+        signal: AbortSignal.timeout(6000)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Error al unirse a la clase');
+
+      const newClass = { class_code: data.class_code, class_name: data.class_name, teacher_username: data.teacher };
+      const updatedClasses = [...studentClasses.filter(c => c.class_code !== data.class_code), newClass];
+      
+      localStorage.setItem('learnhands_student_classes', JSON.stringify(updatedClasses));
+      localStorage.setItem('learnhands_active_class', data.class_code);
+
+      setStudentClasses(updatedClasses);
+      setActiveStudentClass(data.class_code);
+      setJoinClassInput('');
+      setShowClassSwitcher(false);
+      addLocalLog('STUDENT_JOINED_CLASS', `Alumno se unió a clase ${data.class_code} (${data.class_name || ''})`);
+    } catch (err) {
+      setJoinClassError(err.message);
+    } finally {
+      setIsJoiningClass(false);
+    }
+  };
+
+  // Cambiar la clase activa del alumno
+  const handleSwitchActiveClass = async (code) => {
+    if (code === activeStudentClass) {
+      setShowClassSwitcher(false);
+      return;
+    }
+    try {
+      const res = await fetch(`${getApiUrl()}/api/student/active-class`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: sessionUser, class_code: code }),
+        signal: AbortSignal.timeout(5000)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Error al cambiar clase activa');
+
+      localStorage.setItem('learnhands_active_class', code);
+      setActiveStudentClass(code);
+      setShowClassSwitcher(false);
+      addLocalLog('STUDENT_SWITCH_CLASS', `Clase activa cambiada a ${code}`);
+    } catch (err) {
+      console.error('[Switch Class] Error:', err.message);
+      localStorage.setItem('learnhands_active_class', code);
+      setActiveStudentClass(code);
+      setShowClassSwitcher(false);
+    }
+  };
 
   // Cargar lista de clases del profesor
   const fetchClasses = async () => {
@@ -546,12 +773,15 @@ const SystemHub = ({ onExit }) => {
     }
   }, [view]);
 
-  // Cargar lista de estudiantes para el panel del Profesor
-  const fetchStudents = async () => {
+  // Cargar lista de estudiantes para el panel del Profesor (filtrado por clase si se selecciona)
+  const fetchStudents = async (classCode = selectedTeacherClassCode) => {
     setIsLoadingStudents(true);
     setStudentsError('');
     try {
-      const response = await fetch(`${getApiUrl()}/api/teacher/students`);
+      const url = classCode 
+        ? `${getApiUrl()}/api/teacher/students?class_code=${encodeURIComponent(classCode)}`
+        : `${getApiUrl()}/api/teacher/students`;
+      const response = await fetch(url);
       if (!response.ok) throw new Error(`Error del servidor (${response.status})`);
       const data = await response.json();
       setStudentsList(data);
@@ -565,9 +795,10 @@ const SystemHub = ({ onExit }) => {
 
   useEffect(() => {
     if (view === 'TEACHER_DASHBOARD') {
-      fetchStudents();
+      fetchClasses();
+      fetchStudents(selectedTeacherClassCode);
     }
-  }, [view]);
+  }, [view, selectedTeacherClassCode]);
 
   // Sumar/Restar puntos en el juego actual (con penalización, mínimo 0)
   const addPoints = (p) => {
@@ -774,6 +1005,31 @@ const SystemHub = ({ onExit }) => {
       {/* Botón flotante superior derecho para alternar idioma en cualquier vista (excepto jugando) */}
       {view !== 'GAME' && (
         <div className="absolute top-12 right-12 z-50 flex gap-4">
+          {view === 'LOGIN' && (
+            <HandButton
+              onClick={() => setShowApiSettings(true)}
+              className="p-4 flex items-center justify-center animate-pulse"
+              variant="purple"
+              dwellMs={700}
+            >
+              <Settings size={14} />
+            </HandButton>
+          )}
+          {view !== 'LOGIN' && userRole === 'student' && (
+            <HandButton
+              onClick={() => setShowClassSwitcher(true)}
+              className="px-5 py-4 text-xs font-black tracking-widest flex items-center gap-2"
+              variant="cyan"
+              dwellMs={700}
+            >
+              <Users size={14} />
+              <span>
+                {activeStudentClass 
+                  ? `${lang === 'es' ? 'Clase' : 'Class'}: ${activeStudentClass}` 
+                  : (lang === 'es' ? 'Sin Clase' : 'No Class')}
+              </span>
+            </HandButton>
+          )}
           <HandButton onClick={toggleLanguage} className="px-5 py-4 text-xs font-black tracking-widest flex items-center gap-2" variant="purple" dwellMs={700}>
             <Languages size={14} />
             <span>{lang === 'es' ? '🇺🇸 EN' : '🇪🇸 ES'}</span>
@@ -820,14 +1076,60 @@ const SystemHub = ({ onExit }) => {
                         autoFocus
                       />
                     </>
+                  ) : isNewStudent ? (
+                    <>
+                      <div className="w-full px-8 py-4 rounded-2xl bg-white/5 border border-white/10 text-white/50 text-sm font-bold text-center">
+                        {lang === 'es' ? `Cédula: ${loginInput}` : `ID: ${loginInput}`}
+                      </div>
+                      <input
+                        type="text"
+                        value={displayNameInput}
+                        onChange={(e) => {
+                          const cleanVal = e.target.value
+                            .normalize('NFD')
+                            .replace(/[\u0300-\u036f]/g, '')
+                            .replace(/[^a-zA-Z0-9\s]/g, '');
+                          setDisplayNameInput(cleanVal);
+                        }}
+                        placeholder={lang === 'es' ? 'Nombre Completo' : 'Full Name'}
+                        className="w-full px-8 py-5 rounded-2xl bg-white/5 border border-white/10 text-white font-bold text-center text-lg focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/30 transition-all placeholder-white/20"
+                        maxLength={50}
+                        autoFocus
+                      />
+                      <input
+                        type="text"
+                        value={classCodeInput}
+                        onChange={(e) => {
+                          const cleanVal = e.target.value
+                            .replace(/[^a-zA-Z0-9]/g, '')
+                            .toUpperCase();
+                          setClassCodeInput(cleanVal);
+                        }}
+                        placeholder={lang === 'es' ? 'Código de Clase (Opcional)' : 'Class Code (Optional)'}
+                        className="w-full px-8 py-5 rounded-2xl bg-white/5 border border-white/10 text-white font-bold text-center text-lg focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/30 transition-all placeholder-white/20"
+                        maxLength={6}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsNewStudent(false);
+                          setLoginError('');
+                          setDisplayNameInput('');
+                          setClassCodeInput('');
+                        }}
+                        className="text-purple-400 text-xs font-bold uppercase tracking-wider underline hover:text-purple-300 transition-colors"
+                      >
+                        {lang === 'es' ? '← Cambiar Cédula' : '← Change ID'}
+                      </button>
+                    </>
                   ) : (
                     <input
                       type="text"
                       value={loginInput}
-                      onChange={(e) => setLoginInput(e.target.value)}
-                      placeholder={t('login_placeholder', lang)}
+                      onChange={(e) => setLoginInput(e.target.value.replace(/\D/g, ''))} // Solo dígitos
+                      placeholder={lang === 'es' ? 'Ingresa tu cédula' : 'Enter your ID number'}
                       className="w-full px-8 py-5 rounded-2xl bg-white/5 border border-white/10 text-white font-bold text-center text-lg focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/30 transition-all placeholder-white/20"
-                      maxLength={30}
+                      maxLength={10}
                       autoFocus
                     />
                   )}
@@ -937,18 +1239,16 @@ const SystemHub = ({ onExit }) => {
                       {showDashboard ? (lang === 'es' ? 'Ocultar Estadísticas' : 'Hide Statistics') : (lang === 'es' ? 'Ver Estadísticas' : 'View Statistics')}
                     </HandButton>
 
-                    {userRole === 'teacher' && (
-                      <HandButton
-                        onClick={handleLogout}
-                        disabled={showHubOnboarding}
-                        className="px-6 py-3 text-[10px] font-black tracking-widest flex items-center gap-2 flex-1 justify-center min-w-[150px]"
-                        variant="red"
-                        dwellMs={800}
-                      >
-                        <LogOut size={14} />
-                        {lang === 'es' ? 'Cerrar Sesión' : 'Log Out'}
-                      </HandButton>
-                    )}
+                    <HandButton
+                      onClick={handleLogout}
+                      disabled={showHubOnboarding}
+                      className="px-6 py-3 text-[10px] font-black tracking-widest flex items-center gap-2 flex-1 justify-center min-w-[150px]"
+                      variant="red"
+                      dwellMs={800}
+                    >
+                      <LogOut size={14} />
+                      {lang === 'es' ? 'Cerrar Sesión' : 'Log Out'}
+                    </HandButton>
 
                     {onExit && (
                       <HandButton onClick={onExit} disabled={showHubOnboarding} className="px-6 py-3 text-[10px] font-black tracking-widest flex-1 justify-center min-w-[100px]" variant="red" dwellMs={750}>
@@ -1299,6 +1599,9 @@ const SystemHub = ({ onExit }) => {
           <motion.div key="menu" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 1.1 }} className="flex-1 flex flex-col items-center pt-28 pb-4 px-12 overflow-hidden z-30">
             {/* Header */}
             <div className="absolute top-12 left-12 flex items-center gap-6 z-10">
+              <HandButton onClick={() => setView('HOME')} className="px-5 py-3.5 text-xs flex items-center gap-2" variant="red" dwellMs={600}>
+                <ArrowLeft size={16} /> {lang === 'es' ? 'Volver' : 'Back'}
+              </HandButton>
               <img src={puceLogo} alt="PUCE Logo" className="h-16 w-auto drop-shadow-2xl" />
               <div className="h-8 w-[1px] bg-white/10" />
               <div className="flex items-center gap-2 bg-white/5 border border-white/10 px-4 py-2 rounded-xl">
@@ -1512,9 +1815,16 @@ const SystemHub = ({ onExit }) => {
                   <input
                     type="text"
                     value={newClassName}
-                    onChange={e => { setNewClassName(e.target.value); setCreateClassError(''); }}
+                    onChange={e => {
+                      const cleanVal = e.target.value
+                        .normalize('NFD')
+                        .replace(/[\u0300-\u036f]/g, '')
+                        .replace(/[^a-zA-Z0-9\s-]/g, '');
+                      setNewClassName(cleanVal);
+                      setCreateClassError('');
+                    }}
                     onKeyDown={e => e.key === 'Enter' && handleCreateClass()}
-                    placeholder={lang === 'es' ? 'Nombre de la clase (ej: 3ro B Matemáticas)' : 'Class name (e.g., 3rd B Math)'}
+                    placeholder={lang === 'es' ? 'Nombre de la clase (ej: 3ro B Matematicas)' : 'Class name (e.g., 3rd B Math)'}
                     maxLength={80}
                     className="flex-1 bg-white/5 border border-white/10 rounded-2xl px-5 py-3 text-sm text-white placeholder-white/20 focus:outline-none focus:border-purple-500/60 transition-colors"
                   />
@@ -1637,11 +1947,27 @@ const SystemHub = ({ onExit }) => {
 
             {/* Listado de Estudiantes */}
             <div className="w-full max-w-6xl p-8 rounded-[40px] border border-white/15 flex flex-col gap-6 overflow-hidden flex-1 bg-slate-900 shadow-2xl min-h-0">
-              <div className="flex justify-between items-center shrink-0">
+              <div className="flex justify-between items-center shrink-0 flex-wrap gap-4">
                 <span className="text-white/40 font-black uppercase tracking-[0.2em] text-[10px]">{t('teacher_subtitle', lang)}</span>
-                <HandButton onClick={fetchStudents} className="px-4 py-2.5 text-[9px] flex items-center gap-2" variant="purple" dwellMs={700}>
-                  <RefreshCw size={12} className={isLoadingStudents ? 'animate-spin' : ''} /> {t('teacher_refresh', lang)}
-                </HandButton>
+                <div className="flex items-center gap-4">
+                  <select
+                    value={selectedTeacherClassCode}
+                    onChange={(e) => setSelectedTeacherClassCode(e.target.value)}
+                    className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs text-white focus:outline-none focus:border-purple-500/60 font-bold"
+                  >
+                    <option value="" className="bg-slate-900 text-white font-bold">
+                      {lang === 'es' ? 'Todas las Clases' : 'All Classes'}
+                    </option>
+                    {classesList.map((cls) => (
+                      <option key={cls.class_code} value={cls.class_code} className="bg-slate-900 text-white font-bold">
+                        {cls.class_name} ({cls.class_code})
+                      </option>
+                    ))}
+                  </select>
+                  <HandButton onClick={() => fetchStudents(selectedTeacherClassCode)} className="px-4 py-2.5 text-[9px] flex items-center gap-2" variant="purple" dwellMs={700}>
+                    <RefreshCw size={12} className={isLoadingStudents ? 'animate-spin' : ''} /> {t('teacher_refresh', lang)}
+                  </HandButton>
+                </div>
               </div>
 
               <div className="flex-1 overflow-y-auto w-full pr-2" style={{ scrollbarWidth: 'thin' }}>
@@ -1711,9 +2037,16 @@ const SystemHub = ({ onExit }) => {
                           const scoresByGame = getScoresByGame(student.username);
                           return (
                             <tr key={student.username} className="border-b border-white/5 hover:bg-white/10 bg-slate-900/50 transition-colors">
-                              <td className="py-3 px-3 flex items-center gap-2">
-                                <span className="text-purple-400 font-display italic text-xs w-4">#{idx + 1}</span>
-                                <span className="uppercase tracking-wider truncate max-w-[90px]">{student.username}</span>
+                              <td className="py-3 px-3 flex flex-col justify-center gap-0.5">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-purple-400 font-display italic text-xs">#{idx + 1}</span>
+                                  <span className="uppercase tracking-wider truncate max-w-[150px] font-bold text-white">
+                                    {student.display_name || student.username}
+                                  </span>
+                                </div>
+                                <span className="text-[9px] text-white/30 tracking-wider font-mono">
+                                  {student.username}
+                                </span>
                               </td>
                               <td className="py-3 px-3 text-center text-amber-400 font-display italic text-xs">
                                 {student.total_score || 0} pts
@@ -1811,6 +2144,154 @@ const SystemHub = ({ onExit }) => {
       {/* Onboarding del Hub — renderizado al final para estar por encima del contenido pero el botón COMENZAR lo descarta */}
       {showHubOnboarding && view === 'HOME' && (
         <HubOnboarding lang={lang} onClose={() => setShowHubOnboarding(false)} />
+      )}
+
+      {/* MODAL DE SELECTOR DE CLASE PARA ALUMNOS */}
+      {showClassSwitcher && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-8 bg-black/75 backdrop-blur-md">
+          <div className="glass p-10 rounded-[40px] border border-white/10 flex flex-col gap-6 text-center max-w-lg w-full shadow-2xl bg-slate-900/90 max-h-[85vh] overflow-hidden">
+            <div className="flex justify-between items-center shrink-0">
+              <h3 className="text-xl font-display font-black text-white uppercase italic tracking-wider">
+                {lang === 'es' ? 'Mis Clases' : 'My Classes'}
+              </h3>
+              <HandButton onClick={() => { setShowClassSwitcher(false); setJoinClassError(''); }} className="px-4 py-2 text-[9px]" variant="red" dwellMs={600}>
+                {lang === 'es' ? 'Cerrar' : 'Close'}
+              </HandButton>
+            </div>
+
+            {/* Listado de clases del alumno */}
+            <div className="flex-1 overflow-y-auto pr-2 flex flex-col gap-3 my-2" style={{ scrollbarWidth: 'thin' }}>
+              {studentClasses.length === 0 ? (
+                <div className="py-6 text-white/30 text-xs font-bold uppercase tracking-wider">
+                  {lang === 'es' ? 'No estás registrado en ninguna clase.' : 'You are not enrolled in any class.'}
+                </div>
+              ) : (
+                studentClasses.map((cls) => {
+                  const isActive = cls.class_code === activeStudentClass;
+                  return (
+                    <div
+                      key={cls.class_code}
+                      onClick={() => !isActive && handleSwitchActiveClass(cls.class_code)}
+                      className={`flex items-center justify-between p-4 rounded-2xl border transition-all cursor-pointer ${
+                        isActive
+                          ? 'bg-purple-600/20 border-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.2)]'
+                          : 'bg-white/5 border-white/5 hover:border-white/20'
+                      }`}
+                    >
+                      <div className="flex flex-col text-left min-w-0">
+                        <span className="text-white text-xs font-black uppercase tracking-wider truncate">
+                          {cls.class_name || (lang === 'es' ? 'Clase' : 'Class')}
+                        </span>
+                        <span className="text-lg font-display font-black tracking-widest text-purple-300 italic font-mono">
+                          {cls.class_code}
+                        </span>
+                      </div>
+                      {isActive ? (
+                        <span className="text-[9px] font-black uppercase bg-purple-500 text-white px-3 py-1 rounded-full tracking-widest">
+                          {lang === 'es' ? 'Activa' : 'Active'}
+                        </span>
+                      ) : (
+                        <span className="text-[9px] font-black uppercase text-white/40 tracking-widest hover:text-white transition-colors">
+                          {lang === 'es' ? 'Seleccionar' : 'Select'}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Formulario para unirse a nueva clase */}
+            <div className="pt-4 border-t border-white/10 flex flex-col gap-3 shrink-0">
+              <span className="text-white/40 font-black uppercase tracking-[0.2em] text-[9px] text-left">
+                {lang === 'es' ? 'Unirse a una nueva clase' : 'Join a new class'}
+              </span>
+              <div className="flex gap-3">
+                <input
+                  type="text"
+                  value={joinClassInput}
+                  onChange={(e) => {
+                    const cleanVal = e.target.value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+                    setJoinClassInput(cleanVal);
+                    setJoinClassError('');
+                  }}
+                  placeholder={lang === 'es' ? 'Código (ej: N4MK2L)' : 'Code (e.g., N4MK2L)'}
+                  maxLength={6}
+                  className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white placeholder-white/20 font-bold font-mono focus:outline-none focus:border-cyan-500/60 text-center"
+                />
+                <HandButton
+                  onClick={handleJoinClass}
+                  disabled={isJoiningClass || !joinClassInput.trim()}
+                  className="px-6 py-2.5 text-[10px] shrink-0"
+                  variant="cyan"
+                  dwellMs={700}
+                >
+                  {isJoiningClass ? (lang === 'es' ? 'Uniendo...' : 'Joining...') : (lang === 'es' ? 'Unirse' : 'Join')}
+                </HandButton>
+              </div>
+              {joinClassError && (
+                <p className="text-red-400 text-[10px] font-bold uppercase tracking-wider text-left">{joinClassError}</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE CONFIGURACIÓN DE API (GEAR ICON DESDE LOGIN) */}
+      {showApiSettings && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-8 bg-black/75 backdrop-blur-md">
+          <div className="glass p-10 rounded-[40px] border border-white/10 flex flex-col gap-6 text-center max-w-lg w-full shadow-2xl bg-slate-900/90">
+            <div className="flex justify-between items-center shrink-0">
+              <h3 className="text-xl font-display font-black text-white uppercase italic tracking-wider">
+                {lang === 'es' ? 'Configuración de Servidor' : 'Server Settings'}
+              </h3>
+              <HandButton onClick={() => setShowApiSettings(false)} className="px-4 py-2 text-[9px]" variant="red" dwellMs={600}>
+                {lang === 'es' ? 'Cerrar' : 'Close'}
+              </HandButton>
+            </div>
+            <div className="flex flex-col gap-4 text-left">
+              <p className="text-white/45 text-[10px] uppercase font-black tracking-widest leading-relaxed">
+                {lang === 'es' 
+                  ? 'Configura la URL del backend de LearnHands. Esto determina dónde se sincronizan las métricas y se verifican los alumnos.' 
+                  : 'Configure the LearnHands backend URL. This determines where metrics sync and student accounts are verified.'}
+              </p>
+              <div className="flex flex-col gap-2">
+                <span className="text-[10px] font-black uppercase text-purple-400">URL del Servidor API</span>
+                <input
+                  type="text"
+                  value={tempApiUrl}
+                  onChange={(e) => setTempApiUrl(e.target.value)}
+                  placeholder="https://autocomerciojvc.com"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs text-white placeholder-white/20 font-bold focus:outline-none focus:border-purple-500/60"
+                />
+              </div>
+              <div className="flex gap-3 justify-end mt-4">
+                <HandButton
+                  onClick={() => {
+                    setTempApiUrl('https://autocomerciojvc.com');
+                  }}
+                  className="px-5 py-2.5 text-[9px]"
+                  variant="default"
+                  dwellMs={700}
+                >
+                  {lang === 'es' ? 'Restablecer JVC' : 'Reset to JVC'}
+                </HandButton>
+                <HandButton
+                  onClick={() => {
+                    setApiUrl(tempApiUrl.trim());
+                    setShowApiSettings(false);
+                    window.location.reload();
+                  }}
+                  className="px-6 py-2.5 text-[9px]"
+                  variant="purple"
+                  dwellMs={700}
+                >
+                  {lang === 'es' ? 'Guardar y Reiniciar' : 'Save & Reload'}
+                </HandButton>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
     </LayeredEngine>
