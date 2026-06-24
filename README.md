@@ -1,6 +1,6 @@
-# EduMotion (app-escritorio) 🖐️✨
+# LearnHands (app-escritorio) 🖐️✨
 
-**EduMotion** es una plataforma educativa interactiva nativa para escritorio diseñada para la inclusión digital en entornos escolares de **Fe y Alegría Ecuador**. Utiliza **Inteligencia Artificial y Visión por Computadora** en tiempo real para permitir que los estudiantes interactúen con actividades lúdicas sin necesidad de tocar el mouse ni el teclado, utilizando exclusivamente gestos naturales de sus manos frente a la cámara web.
+**LearnHands** es una plataforma educativa interactiva nativa para escritorio diseñada para la inclusión digital en entornos escolares de **Fe y Alegría Ecuador**. Utiliza **Inteligencia Artificial y Visión por Computadora** en tiempo real para permitir que los estudiantes interactúen con actividades lúdicas sin necesidad de tocar el mouse ni el teclado, utilizando exclusivamente gestos naturales de sus manos frente a la cámara web.
 
 La aplicación está diseñada para funcionar de forma **100% offline** en las computadoras de los laboratorios escolares que no cuentan con acceso a internet.
 
