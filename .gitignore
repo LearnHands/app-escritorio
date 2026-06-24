@@ -1,4 +1,10 @@
 node_modules
+dist
 dist-electron
 *.rar
 *.zip
+.env
+.env.*
+.DS_Store
+.vscode/
+.idea/
