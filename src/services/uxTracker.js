@@ -22,7 +22,7 @@ export function seedUxHistory() {
   const historyKey = 'learnhands_ux_history';
   const existing = localStorage.getItem(historyKey);
   if (!existing || JSON.parse(existing).length < 5) {
-    const students = ['Juan', 'Maria', 'Pedro', 'KathePastaz', 'Luis', 'Sofia'];
+    const students = ['Juan', 'Maria', 'Pedro', 'Luis', 'Sofia'];
     const games = ['PIZARRA', 'PIANO', 'ROMPECABEZAS', 'ANATOMIA', 'CONTABILIDAD', 'CIRCUITOS', 'CODING', 'INGLES', 'VERBOS'];
     const metricTypes = ['SESSION_TIME', 'AUTONOMY_TIME', 'RECOGNITION_ACCURACY', 'ACTIVE_MODULE'];
     const seeded = [];

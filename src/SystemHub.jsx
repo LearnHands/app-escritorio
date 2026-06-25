@@ -1159,7 +1159,7 @@ const SystemHub = ({ onExit }) => {
                     setIsTeacherMode(prev => {
                       const next = !prev;
                       if (next) {
-                        setLoginInput('KathePastaz');
+                        setLoginInput('');
                       } else {
                         setLoginInput('');
                       }

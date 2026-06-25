@@ -1,5 +1,37 @@
 # Registro de cambios — LearnHands
 
+## [5.0.0] — 2026-06-24 · Despliegue en Producción y Depuración de Artefactos de Desarrollo
+
+### 🌐 Migración al Servidor de Producción LearnHands
+- **URL de API unificada:** La aplicación apunta ahora exclusivamente a `https://learnhands.edutecsalpuce.com` como servidor de producción de la plataforma LearnHands / Fe y Alegría Ecuador. Se eliminó completamente la dependencia del servidor de desarrollo `autocomerciojvc.com`.
+- **Inicio de sesión docente en línea:** El login de profesor realiza autenticación contra la API real (`POST /api/auth/login`). El acceso queda deshabilitado automáticamente cuando no hay conexión a internet.
+- **Sincronización de métricas de juego:** Las partidas completadas se envían a `POST /api/metrics` del nuevo servidor. Si el dispositivo está offline, las métricas se encolan en `localStorage` y se sincronizan automáticamente al recuperar conexión.
+- **Registros de estudiantes:** El flujo de registro con validación de cédula ecuatoriana usa `POST /api/auth/register` del servidor de producción.
+- **Panel de ajustes — URL configurable:** El campo de URL de la API muestra `https://learnhands.edutecsalpuce.com` como valor por defecto. El botón de restablecimiento de URL fue actualizado de "Restablecer JVC" a "Restablecer".
+
+### 🧹 Eliminación de Referencias de Usuario de Desarrollo
+- **Campo de usuario docente vacío por defecto:** Al activar el modo "Acceso Docente" en la pantalla de login, el campo de usuario ya no se prellenaba con el nombre de la usuaria de prueba. Ahora el campo queda vacío para que el docente ingrese su usuario real.
+- **Cadenas de interfaz genéricas:** Se actualizaron los textos de la UI para que no mencionen nombres de usuarios específicos:
+  - El título del modo docente pasó de `"Acceso Docente (KathePastaz)"` a `"Acceso Docente"`.
+  - El mensaje de error de credenciales pasó de `"Solo el usuario KathePastaz tiene rol de profesora."` a `"Usuario o contraseña incorrectos."`.
+  - El encabezado del panel docente pasó de `"Dashboard de la Profesora KathePastaz"` a `"Dashboard Docente"`.
+  - Los equivalentes en inglés fueron actualizados con la misma lógica.
+- **Datos de semilla de diagnóstico limpios:** Se eliminó el nombre de la usuaria de prueba del conjunto de datos sintéticos utilizados por `uxTracker.js` para inicializar el historial de métricas UX local.
+- **Nombres de módulos de juego corregidos en la cola de sincronización:** Las claves de módulo en los datos de semilla de `sync.js` fueron reemplazadas por las claves canónicas del servidor de producción (`PIZARRA`, `PIANO`, `PUZZLE`, `BRICKS`, `SILABAS`, `ECO`, `ABACUS`, `SOLAR`, `FORMAS`).
+
+### 📦 Resultado
+Esta versión marca el **cierre del ciclo de prototipo** y la **entrada a producción completa** de la aplicación de escritorio LearnHands. Todos los artefactos, credenciales de prueba y referencias a entornos de desarrollo anteriores han sido removidos del código fuente y de la interfaz de usuario.
+
+---
+
+## [4.2.0] — 2026-06-20 · Apuntar API al Servidor de Producción LearnHands
+
+### 🌐 Cambio de Servidor de API
+- `DEFAULT_API_URL` en `sync.js` actualizado de `https://autocomerciojvc.com` a `https://learnhands.edutecsalpuce.com`.
+- El `placeholder` y el valor de restablecimiento del campo de URL en el panel de configuración de la aplicación fueron actualizados en consecuencia.
+
+---
+
 ## [4.1.2] — 2026-06-15 · Cierre de Sesión para Docentes y Compilación Limpia
 
 ### 🔑 Sesiones y Control de Usuarios

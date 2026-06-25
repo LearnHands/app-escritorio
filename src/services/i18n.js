@@ -54,8 +54,8 @@ const translations = {
     login_password_required: 'Por favor, ingresa la contraseña.',
     login_incorrect_password: 'Contraseña incorrecta.',
     login_use_teacher_login: 'El usuario docente debe ingresar por el Acceso Docente.',
-    login_teacher_title: 'Acceso Docente (KathePastaz)',
-    login_teacher_username_invalid: 'Solo el usuario KathePastaz tiene rol de profesora.',
+    login_teacher_title: 'Acceso Docente',
+    login_teacher_username_invalid: 'Usuario o contraseña incorrectos.',
 
     // Estado de Sincronización
     sync_status_online: 'Conectado · Sincronizado',
@@ -75,7 +75,7 @@ const translations = {
     teacher_col_student: 'Estudiante',
     teacher_col_score: 'Puntuación Total',
     teacher_col_last_played: 'Última Partida',
-    teacher_title: 'Dashboard de la Profesora KathePastaz',
+    teacher_title: 'Dashboard Docente',
     teacher_no_students: 'No se encontraron alumnos registrados en el sistema.',
     teacher_refresh: 'Actualizar Lista'
   },
@@ -132,8 +132,8 @@ const translations = {
     login_password_required: 'Please enter the password.',
     login_incorrect_password: 'Incorrect password.',
     login_use_teacher_login: 'Teacher username must use Teacher Access.',
-    login_teacher_title: 'Teacher Access (KathePastaz)',
-    login_teacher_username_invalid: 'Only KathePastaz has teacher access.',
+    login_teacher_title: 'Teacher Access',
+    login_teacher_username_invalid: 'Incorrect username or password.',
 
     // Estado de Sincronización
     sync_status_online: 'Connected · Synced',
@@ -153,7 +153,7 @@ const translations = {
     teacher_col_student: 'Student',
     teacher_col_score: 'Total Score',
     teacher_col_last_played: 'Last Played',
-    teacher_title: 'KathePastaz Teacher Dashboard',
+    teacher_title: 'Teacher Dashboard',
     teacher_no_students: 'No registered students found in the system.',
     teacher_refresh: 'Refresh List'
   }
