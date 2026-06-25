@@ -2,7 +2,7 @@ const METRICS_QUEUE_KEY = 'learnhands_metrics_queue';
 const LOCAL_LOGS_KEY = 'learnhands_local_logs';
 const CONFIG_KEY = 'learnhands_config';
 
-const DEFAULT_API_URL = 'https://autocomerciojvc.com';
+const DEFAULT_API_URL = 'https://learnhands.edutecsalpuce.com';
 
 export function getApiUrl() {
   const config = JSON.parse(localStorage.getItem(CONFIG_KEY) || '{}');
@@ -69,8 +69,8 @@ export function seedMetricsHistory() {
   const historyKey = 'learnhands_metrics_history';
   const existing = localStorage.getItem(historyKey);
   if (!existing || JSON.parse(existing).length < 5) {
-    const students = ['Juan', 'Maria', 'Pedro', 'KathePastaz', 'Luis', 'Sofia'];
-    const games = ['PIZARRA', 'PIANO', 'ROMPECABEZAS', 'ANATOMIA', 'CONTABILIDAD', 'CIRCUITOS', 'CODING', 'INGLES', 'VERBOS'];
+    const students = ['Juan', 'Maria', 'Pedro', 'Luis', 'Sofia'];
+    const games = ['PIZARRA', 'PIANO', 'PUZZLE', 'BRICKS', 'SILABAS', 'ECO', 'ABACUS', 'CODING', 'ANATOMY'];
     const seeded = [];
     const now = new Date();
     

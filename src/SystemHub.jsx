@@ -2261,20 +2261,20 @@ const SystemHub = ({ onExit }) => {
                   type="text"
                   value={tempApiUrl}
                   onChange={(e) => setTempApiUrl(e.target.value)}
-                  placeholder="https://autocomerciojvc.com"
+                  placeholder="https://learnhands.edutecsalpuce.com"
                   className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs text-white placeholder-white/20 font-bold focus:outline-none focus:border-purple-500/60"
                 />
               </div>
               <div className="flex gap-3 justify-end mt-4">
                 <HandButton
                   onClick={() => {
-                    setTempApiUrl('https://autocomerciojvc.com');
+                    setTempApiUrl('https://learnhands.edutecsalpuce.com');
                   }}
                   className="px-5 py-2.5 text-[9px]"
                   variant="default"
                   dwellMs={700}
                 >
-                  {lang === 'es' ? 'Restablecer JVC' : 'Reset to JVC'}
+                  {lang === 'es' ? 'Restablecer' : 'Reset'}
                 </HandButton>
                 <HandButton
                   onClick={() => {
